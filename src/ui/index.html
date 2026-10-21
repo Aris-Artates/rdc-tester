@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RDC Checker</title>
+<style>
+  :root { --bg:#f4f6fa; --card:#fff; --ink:#1b2333; --muted:#667085; --line:#d9dee8; --navy:#1f2a44; --accent:#2f6fec;
+          --pass:#1e8e3e; --fail:#c62828; --blocked:#b7791f; --ni:#5b5bd6; }
+  * { box-sizing:border-box }
+  body { margin:0; font:14px/1.45 system-ui, Segoe UI, sans-serif; background:var(--bg); color:var(--ink) }
+  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:24px; flex-wrap:wrap }
+  header h1 { font-size:18px; margin:0 }
+  nav button { background:none; border:0; color:#cfd6e6; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:14px }
+  nav button.on { background:#ffffff22; color:#fff }
+  main { max-width:1100px; margin:20px auto; padding:0 16px }
+  .tab { display:none } .tab.on { display:block }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:16px }
+  h2 { font-size:16px; margin:0 0 10px } h3 { font-size:14px; margin:16px 0 6px }
+  label { display:inline-flex; align-items:center; gap:6px; margin:3px 14px 3px 0 }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center }
+  .chips label { background:#eef1f7; border-radius:999px; padding:3px 10px; margin:3px 4px 3px 0 }
+  input[type=text], input[type=password], select, textarea { border:1px solid var(--line); border-radius:6px; padding:7px 9px; font:inherit; background:#fff }
+  textarea { width:100%; min-height:220px; font-family:Consolas, monospace; font-size:12px }
+  .btn { border:1px solid var(--line); background:#fff; border-radius:6px; padding:8px 14px; cursor:pointer; font:inherit }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff }
+  .btn:disabled { opacity:.5; cursor:default }
+  .muted { color:var(--muted); font-size:12px }
+  code, .cmd { font-family:Consolas, monospace; font-size:12px; background:#eef1f7; padding:2px 6px; border-radius:4px }
+  #log { background:#0f1522; color:#d8e0f0; font:12px/1.5 Consolas, monospace; padding:12px; border-radius:8px; height:420px; overflow:auto; white-space:pre-wrap }
+  .l-pass { color:#6fdc8c } .l-fail { color:#ff8a80 } .l-blocked { color:#ffd166 } .l-ni { color:#a5a8ff }
+  .stats { display:flex; gap:12px; flex-wrap:wrap }
+  .stat { flex:1; min-width:120px; border-radius:8px; padding:10px 14px; background:#eef1f7 }
+  .stat b { display:block; font-size:22px }
+  .s-pass b { color:var(--pass) } .s-fail b { color:var(--fail) } .s-blocked b { color:var(--blocked) } .s-ni b { color:var(--ni) }
+  .grid { display:grid; grid-template-columns:240px 1fr; gap:6px 14px; align-items:center }
+  .grid .help { grid-column:2; margin-top:-4px }
+  table { border-collapse:collapse; width:100%; font-size:13px } td, th { border-bottom:1px solid var(--line); padding:5px 8px; text-align:left; vertical-align:top }
+  ol li { margin-bottom:6px }
+  @media (max-width:640px) { .grid { grid-template-columns:1fr } .grid .help { grid-column:1 } }
+</style>
+</head>
+<body>
+<header>
+  <h1>RDC Checker</h1>
+  <nav>
+    <button data-t="run" class="on">Run tests</button>
+    <button data-t="tests">Test list</button>
+    <button data-t="sheet">Sheet</button>
+    <button data-t="settings">Settings (.env)</button>
+    <button data-t="help">How to use</button>
+  </nav>
+</header>
+<main>
+
+<!-- ===================== RUN ===================== -->
+<section class="tab on" id="t-run">
+  <div class="card">
+    <h2>What to run</h2>
+    <h3>Modules</h3><div class="chips" id="mods"></div>
+    <h3>Kinds</h3><div class="chips" id="kinds"></div>
+    <h3>Accounts</h3><div class="chips" id="roles"></div>
+    <h3>Retest by latest sheet result</h3>
+    <div class="row">
+      <select id="status">
+        <option value="">Everything selected above</option>
+        <option value="Fail">Only latest = Fail</option>
+        <option value="Fail,Blocked">Only latest = Fail or Blocked</option>
+        <option value="Not Implemented">Only latest = Not Implemented</option>
+        <option value="Not Started">Only never run</option>
+      </select>
+      <input type="text" id="only" placeholder="Only these TC IDs, e.g. ACO-002,SET-003" size="36">
+    </div>
+    <h3>Options</h3>
+    <label><input type="checkbox" id="push" checked> Write results to the sheet</label>
+    <label><input type="checkbox" id="headed"> Show the browser</label>
+    <label>Screenshots <select id="shots"><option value="fail">on Fail</option><option value="all">all</option><option value="none">none</option></select></label>
+    <p class="muted">Tickets set to <b>Cancelled</b> in the sheet are always skipped and never written.</p>
+    <div class="row">
+      <button class="btn primary" id="go">Run</button>
+      <button class="btn" id="dry">Dry run (list only)</button>
+      <button class="btn" id="stop" disabled>Stop</button>
+      <span class="muted">Terminal: <span class="cmd" id="cmd">npm run qa</span></span>
+    </div>
+  </div>
+  <div class="card" id="resultCard" style="display:none">
+    <h2>Result</h2>
+    <div class="stats" id="stats"></div>
+    <p class="muted" id="resultInfo"></p>
+  </div>
+  <div class="card"><h2>Live log</h2><div id="log">Nothing run yet.</div></div>
+</section>
+
+<!-- ===================== TEST LIST ===================== -->
+<section class="tab" id="t-tests">
+  <div class="card">
+    <h2>Tests in the code <span class="muted" id="count"></span></h2>
+    <p class="muted">Every file in <code>src/tests/</code>. Edit a test there, then <b>Sheet &gt; Sync tests to the sheet</b>.</p>
+    <table><thead><tr><th>TC ID</th><th>Module</th><th>Kind</th><th>Account</th><th>Test</th></tr></thead><tbody id="list"></tbody></table>
+  </div>
+</section>
+
+<!-- ===================== SHEET ===================== -->
+<section class="tab" id="t-sheet">
+  <div class="card">
+    <h2>Sheet</h2>
+    <div class="row">
+      <button class="btn primary" id="sync">Sync tests to the sheet</button>
+      <button class="btn" id="make">Make a fresh .xlsx sheet</button>
+      <a class="btn" id="openSheet" target="_blank" rel="noopener">Open the sheet</a>
+    </div>
+    <p class="muted"><b>Sync</b> adds tests that are in the code but not in the sheet (as Active) and refreshes their descriptions.
+      It never changes Ticket Status, Reference (original), Remarks or any Cancelled row.<br>
+      <b>Make .xlsx</b> writes <code>sheet/RDC-QA-Checker.xlsx</code> for a brand-new sheet (see docs/SHEET-SETUP.md).</p>
+  </div>
+</section>
+
+<!-- ===================== SETTINGS ===================== -->
+<section class="tab" id="t-settings">
+  <div class="card">
+    <h2>Settings</h2>
+    <div id="form"></div>
+    <div class="row" style="margin-top:14px"><button class="btn primary" id="save">Save</button><span class="muted" id="saved"></span></div>
+  </div>
+  <div class="card">
+    <h2>Copy / paste the whole .env</h2>
+    <textarea id="raw"></textarea>
+    <div class="row" style="margin-top:8px"><button class="btn" id="copyEnv">Copy</button><button class="btn" id="saveRaw">Save pasted text</button></div>
+  </div>
+</section>
+
+<!-- ===================== HELP ===================== -->
+<section class="tab" id="t-help">
+  <div class="card">
+    <h2>How to use</h2>
+    <ol>
+      <li><b>Settings</b>: fill the sheet web app URL and token, the admin account and a limited member account. Save.</li>
+      <li><b>Sheet &gt; Sync tests to the sheet</b> once, so every test has a row.</li>
+      <li><b>Run tests</b>: pick modules / kinds, keep "Write results to the sheet" on, click <b>Run</b>.</li>
+      <li>In the sheet, read <b>Latest Result</b> and <b>Last Notes</b> per test, and the <b>Summary</b> tab per module.</li>
+      <li><b>Data</b> tests need the value from the original site in <b>Reference (original)</b>. Until then they are Blocked and their notes show the Vercel value.</li>
+      <li>To stop testing a ticket, set its <b>Ticket Status</b> to <b>Cancelled</b> (or select rows &gt; menu <i>RDC Checker &gt; Cancel selected tickets</i>). Set it back to Active to resume.</li>
+      <li>Results: <b>Pass</b>, <b>Fail</b>, <b>Blocked</b> (could not run), <b>Not Implemented</b> (on the original, not on Vercel yet).</li>
+    </ol>
+    <p>Adding a test: see <code>docs/ADDING-A-TEST.md</code> in this folder.</p>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+let CATALOG = [], ENV = {}, JOB = null;
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button, .tab').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); $('#t-' + b.dataset.t).classList.add('on');
+});
+
+const chips = (el, values, name) => { el.innerHTML = values.map(v => `<label><input type="checkbox" name="${name}" value="${esc(v)}" checked> ${esc(v)}</label>`).join(''); el.onchange = renderCmd; };
+const picked = name => [...document.querySelectorAll(`input[name=${name}]`)];
+const pickedArg = (name, flag) => { const all = picked(name), on = all.filter(i => i.checked).map(i => i.value); return on.length === all.length ? [] : [flag, on.join(',')]; };
+
+function runArgs(dry) {
+  const a = [...pickedArg('mod', '--module'), ...pickedArg('kind', '--kind'), ...pickedArg('role', '--role')];
+  if ($('#status').value) a.push('--status', $('#status').value);
+  if ($('#only').value.trim()) a.push('--only', $('#only').value.replace(/\s+/g, ''));
+  if (dry) a.push('--dry');
+  else { if ($('#push').checked) a.push('--push'); if ($('#headed').checked) a.push('--headed'); a.push('--shots', $('#shots').value); }
+  return a;
+}
+function renderCmd() { const a = runArgs(false); $('#cmd').textContent = 'npm run qa' + (a.length ? ' -- ' + a.map(x => /\s/.test(x) ? `"${x}"` : x).join(' ') : ''); }
+['status', 'only', 'push', 'headed', 'shots'].forEach(id => $('#' + id).addEventListener('input', renderCmd));
+
+async function loadCatalog() {
+  const r = await fetch('/api/catalog').then(r => r.json());
+  if (r.error) { $('#log').textContent = r.error; return; }
+  CATALOG = r.tests;
+  chips($('#mods'), [...new Set(CATALOG.map(t => t.module))], 'mod');
+  chips($('#kinds'), [...new Set(CATALOG.map(t => t.kind))], 'kind');
+  chips($('#roles'), [...new Set(CATALOG.map(t => t.role))], 'role');
+  $('#count').textContent = `(${CATALOG.length})`;
+  $('#list').innerHTML = CATALOG.map(t => `<tr><td>${esc(t.id)}</td><td>${esc(t.module)}</td><td>${esc(t.kind)}${t.pending ? ' <span class="muted">pending</span>' : ''}${t.writes ? ' <span class="muted">writes</span>' : ''}</td><td>${esc(t.role)}</td><td>${esc(t.title)}</td></tr>`).join('');
+  renderCmd();
+}
+
+function lineClass(l) {
+  if (/^\s+Pass\s/.test(l)) return 'l-pass';
+  if (/^\s+Fail\s/.test(l)) return 'l-fail';
+  if (/^\s+Blocked\s/.test(l)) return 'l-blocked';
+  if (/^\s+Not Implemented\s/.test(l)) return 'l-ni';
+  return '';
+}
+
+async function start(kind, args, title) {
+  if (JOB) return;
+  const log = $('#log');
+  log.innerHTML = '';
+  $('#resultCard').style.display = 'none';
+  const r = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, args, title }) }).then(r => r.json());
+  if (!r.id) { log.textContent = r.error || 'Could not start'; return; }
+  JOB = r.id; $('#stop').disabled = false; $('#go').disabled = $('#dry').disabled = true;
+  log.insertAdjacentHTML('beforeend', `<div class="muted">$ ${esc(r.cmd)}</div>`);
+  const es = new EventSource('/api/stream/' + r.id);
+  es.onmessage = e => { const { line } = JSON.parse(e.data); log.insertAdjacentHTML('beforeend', `<div class="${lineClass(line)}">${esc(line)}</div>`); log.scrollTop = log.scrollHeight; };
+  es.addEventListener('done', e => {
+    es.close(); JOB = null; $('#stop').disabled = true; $('#go').disabled = $('#dry').disabled = false;
+    const { summary } = JSON.parse(e.data);
+    if (summary?.kind === 'run') {
+      const c = summary.counts;
+      $('#stats').innerHTML = [['Pass', 's-pass'], ['Fail', 's-fail'], ['Blocked', 's-blocked'], ['Not Implemented', 's-ni']].map(([k, cls]) => `<div class="stat ${cls}"><b>${c[k] || 0}</b>${k}</div>`).join('');
+      $('#resultInfo').textContent = `CSV: ${summary.csv}. Written to sheet: ${summary.pushed}.` + (summary.cancelled?.length ? ` Skipped as Cancelled: ${summary.cancelled.join(', ')}.` : '');
+      $('#resultCard').style.display = '';
+    }
+  });
+}
+
+$('#go').onclick = () => start('run', runArgs(false), 'Run');
+$('#dry').onclick = () => start('run', runArgs(true), 'Dry run');
+$('#stop').onclick = () => JOB && fetch('/api/stop/' + JOB, { method: 'POST' });
+const toRun = fn => { document.querySelector('nav button[data-t=run]').click(); fn(); };
+$('#sync').onclick = () => toRun(() => start('sync', [], 'Sync'));
+$('#make').onclick = () => toRun(() => start('sheet', [], 'Make sheet'));
+
+// ---------- settings
+async function loadEnv() {
+  const r = await fetch('/api/env').then(r => r.json());
+  ENV = r.values;
+  let group = '', html = '';
+  for (const f of r.schema) {
+    if (f.group !== group) { group = f.group; html += `<h3 style="grid-column:1/-1">${esc(group)}</h3>`; }
+    html += `<label for="f-${f.key}">${esc(f.label)}</label><input id="f-${f.key}" data-key="${f.key}" type="${f.secret ? 'password' : 'text'}" placeholder="${esc(f.placeholder || '')}" value="${esc(ENV[f.key] || '')}"><div class="help muted">${esc(f.help)}</div>`;
+  }
+  $('#form').innerHTML = `<div class="grid">${html}</div>`;
+  $('#raw').value = await fetch('/api/env/format').then(r => r.text());
+  if (ENV.SHEET_URL) $('#openSheet').href = ENV.SHEET_URL; else $('#openSheet').removeAttribute('href');
+}
+$('#save').onclick = async () => {
+  const values = { ...ENV };
+  document.querySelectorAll('#form input[data-key]').forEach(i => { values[i.dataset.key] = i.value.trim(); });
+  await fetch('/api/env', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ values }) });
+  $('#saved').textContent = 'Saved.'; setTimeout(() => $('#saved').textContent = '', 2500); loadEnv();
+};
+$('#saveRaw').onclick = async () => { await fetch('/api/env', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: $('#raw').value }) }); loadEnv(); };
+$('#copyEnv').onclick = () => navigator.clipboard.writeText($('#raw').value);
+
+loadCatalog(); loadEnv();
+</script>
+</body>
+</html>

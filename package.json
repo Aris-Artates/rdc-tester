@@ -1,0 +1,21 @@
+{
+  "name": "rdc-tester",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rule-based QA checker for the RDC8 IMS Vercel deployment. Results go to the QA sheet's Check Log.",
+  "type": "module",
+  "scripts": {
+    "qa": "node src/run.js",
+    "qa:dry": "node src/run.js --dry",
+    "qa:list": "node src/run.js --list",
+    "sync-sheet": "node src/sync.js",
+    "make-sheet": "node src/make-sheet.js",
+    "ui": "node src/ui/server.js",
+    "setup": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "dotenv": "16.4.5",
+    "playwright": "1.48.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}
