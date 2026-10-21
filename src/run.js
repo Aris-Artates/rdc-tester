@@ -6,8 +6,8 @@
  *   --kind Logic,Data          only these kinds (Functional, Logic, Data, Access, Pending)
  *   --role public|admin|member only tests that use this account
  *   --status Fail,Blocked      only tests whose LATEST sheet result is one of these (retest)
- *   --ticket 2151,2160         only tests linked to these dev tickets (sheet column "Dev Ticket")
- *   --push                     write results to the sheet ("RDC QA - Check Log" + "RDC QA - Tests")
+ *   --ticket 12,15             only tests linked to these dev tickets (sheet column "Dev Ticket")
+ *   --push                     write results to the sheet ("Check Log" + "QA Tests")
  *   --shots fail|all|none      screenshots (default fail)
  *   --headed                   show the browser
  *   --dry                      list what would run; no browser

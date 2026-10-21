@@ -29,24 +29,24 @@ Set a row's **Ticket Status** to **Cancelled** in the sheet (or select rows, the
 
 - the checker does not run it (`Skipped (ticket Cancelled)` in the log),
 - the sheet refuses any result for it, even from an old copy of the checker,
-- *Sync* never rewrites it, and the row is greyed out and left out of the RDC QA - Summary counts.
+- *Sync* never rewrites it, and the row is greyed out and left out of the Dashboard counts.
 
 Set it back to **Active** to resume.
 
+## The spreadsheet
+
+RDC has its own spreadsheet, **RDC8 IMS - QA & Dev Tickets**, with these tabs in order:
+**Dashboard**, **Dev Tickets**, **QA Tests**, **Check Log**, **Settings**. Details: [docs/SHEET-SETUP.md](docs/SHEET-SETUP.md).
+
 ## Dev tickets
 
-The QA tabs live in the team's **Enhancement Checker** spreadsheet, next to the dev ticket log
-**Usable Tickets - Leyeco**. That tab is only read, never changed, and its `onEdit` counter keeps working.
-
-- Put the ticket number(s) a test covers in its **Dev Ticket** cell (`2151` or `2151, 2160`).
-  **Dev Ticket Title** fills itself from the ticket log.
-- **RDC QA - Dev Tickets** shows one row per linked ticket with its QA status:
-  *Verified* (every active test passes), *Failing*, *Not on Vercel yet*, *Partly checked*, *Not run yet*,
-  or *No QA test yet*. It refreshes after every run, or from *RDC QA > Refresh dev ticket links*.
+- Devs log RDC tickets on **Dev Tickets** the same way as the team's ticket tab: clear **A2** to get the
+  next number, then type `TYPE: Page - Sub-page - Task` after the `|`.
+- QA puts the ticket number(s) a test covers in that test's **Dev Ticket** cell on **QA Tests** (`12` or `12, 15`).
+- Each ticket's **QA Status** fills itself: *Verified* (every active test passes), *Failing*, *Not on Vercel yet*,
+  *Partly checked*, *Not run yet* or *No QA test yet*. The Dashboard counts them per status and per dev.
 - When a dev finishes a ticket, run only its tests: UI field *Only tests for dev ticket(s)*, or
-  `npm run qa -- --ticket 2151 --push`.
-- Optional: the setting *Also list dev tickets matching (regex)* (e.g. `RDC|IMS`) also lists matching
-  tickets that have no test yet, as a QA to-do list.
+  `npm run qa -- --ticket 12 --push`.
 
 ## Quick start (Windows)
 

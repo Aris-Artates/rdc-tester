@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * npm run sync-sheet [-- --add-only]
- * Adds every test that is in the code but not in the sheet's "RDC QA - Tests" tab (Ticket Status "Active"),
+ * Adds every test that is in the code but not in the sheet's "QA Tests" tab (Ticket Status "Active"),
  * and refreshes Module / Test / Kind / Role / Steps / Expected of existing active rows.
  * Never touches Ticket Status, Dev Ticket, Reference (original) or Remarks, and never touches a Cancelled row.
  */

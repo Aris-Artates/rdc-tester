@@ -70,7 +70,7 @@
         <option value="Not Started">Only never run</option>
       </select>
       <input type="text" id="only" placeholder="Only these TC IDs, e.g. ACO-002,SET-003" size="36">
-      <input type="text" id="ticket" placeholder="Only tests for dev ticket(s), e.g. 2151" size="30">
+      <input type="text" id="ticket" placeholder="Only tests for dev ticket(s), e.g. 12" size="30">
     </div>
     <h3>Options</h3>
     <label><input type="checkbox" id="push" checked> Write results to the sheet</label>
@@ -111,7 +111,7 @@
     </div>
     <p class="muted"><b>Sync</b> adds tests that are in the code but not in the sheet (as Active) and refreshes their descriptions.
       It never changes Ticket Status, Reference (original), Remarks or any Cancelled row.<br>
-      The RDC QA tabs live in the Enhancement Checker spreadsheet, next to <b>Usable Tickets - Leyeco</b> (see docs/SHEET-SETUP.md).</p>
+      Tabs: Dashboard, Dev Tickets, QA Tests, Check Log, Settings in the <b>RDC8 IMS - QA &amp; Dev Tickets</b> spreadsheet (see docs/SHEET-SETUP.md).</p>
   </div>
 </section>
 
@@ -137,8 +137,8 @@
       <li><b>Settings</b>: fill the sheet web app URL and token, the admin account and a limited member account. Save.</li>
       <li><b>Sheet &gt; Sync tests to the sheet</b> once, so every test has a row.</li>
       <li><b>Run tests</b>: pick modules / kinds, keep "Write results to the sheet" on, click <b>Run</b>.</li>
-      <li>In the sheet, read <b>Latest Result</b> and <b>Last Notes</b> per test (<b>RDC QA - Tests</b>), <b>RDC QA - Summary</b> per module, and <b>RDC QA - Dev Tickets</b> per dev ticket.</li>
-      <li>Dev tickets: type the ticket number(s) from <b>Usable Tickets - Leyeco</b> in a test's <b>Dev Ticket</b> column. When a ticket is done, put its number in "Only tests for dev ticket(s)" and Run.</li>
+      <li>In the spreadsheet, the <b>Dashboard</b> shows the totals; <b>QA Tests</b> has <b>Latest Result</b> and <b>Last Notes</b> per test; <b>Dev Tickets</b> has each ticket's <b>QA Status</b>.</li>
+      <li>Dev tickets: type the ticket number(s) from the <b>Dev Tickets</b> tab in a test's <b>Dev Ticket</b> column on <b>QA Tests</b>. When a ticket is done, put its number in "Only tests for dev ticket(s)" and Run.</li>
       <li><b>Data</b> tests need the value from the original site in <b>Reference (original)</b>. Until then they are Blocked and their notes show the Vercel value.</li>
       <li>To stop testing a ticket, set its <b>Ticket Status</b> to <b>Cancelled</b> (or select rows &gt; menu <i>RDC Checker &gt; Cancel selected tickets</i>). Set it back to Active to resume.</li>
       <li>Results: <b>Pass</b>, <b>Fail</b>, <b>Blocked</b> (could not run), <b>Not Implemented</b> (on the original, not on Vercel yet).</li>

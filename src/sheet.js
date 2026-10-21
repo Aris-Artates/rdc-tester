@@ -53,7 +53,7 @@ function explainHtml(text, res) {
 }
 
 /**
- * Test rows from the sheet's "RDC QA - Tests" tab, by TC ID:
+ * Test rows from the sheet's "QA Tests" tab, by TC ID:
  * { id, ticketStatus, devTicket, reference, latest, ... }. Cached so a Google hiccup doesn't stop a run.
  */
 const CACHE = path.join(ROOT, 'results', 'sheet-cache.json');

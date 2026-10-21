@@ -1,93 +1,79 @@
-# Setting up the QA tabs (one time)
+# The RDC QA spreadsheet
 
-The QA tabs go in the team's existing **Enhancement Checker - Symphonics** spreadsheet, next to the
-dev ticket log **Usable Tickets - Leyeco**. They are separate tabs, all named `RDC QA - ...`.
-The ticket tab and its `onEdit` counter are not changed. The checker only **reads** the ticket tab.
+RDC is its own project, so it has its own spreadsheet: **RDC8 IMS - QA & Dev Tickets**
+(created 2026-10-21 under arisartates00@gmail.com; share it with the team from the Share button).
+Its Apps Script project is **RDC QA** and holds `apps-script/RdcCheckerApi.gs` from this repo.
 
-Needs: edit access to the spreadsheet, and about 10 minutes.
+## Tabs
 
-## 1. Add the script as a second file
+| # | Tab | What it is | Who fills it |
+|---|---|---|---|
+| 1 | **Dashboard** | QA cards (active, Pass, Fail, Blocked, Not Implemented, not run, pass rate, cancelled), dev ticket cards (logged, Verified, Failing, Not on Vercel yet, ...), results by module, tickets by dev, open failures, and two charts | formulas (rebuilt by *Set up*) |
+| 2 | **Dev Tickets** | RDC's ticket log, same habit as the team's "Usable Tickets" tab | devs (A–D, J) / the checker (E–I) |
+| 3 | **QA Tests** | One row per checker test | the code (*Sync*) + QA (gold columns) |
+| 4 | **Check Log** | One row per check: TC ID, Dev Ticket, Checker, Checked At, Environment, Result, Notes, Screenshot | the checker |
+| 5 | **Settings** | Dropdown lists (Ticket Status, Result, Kind, Role, **Dev**) and settings | QA (rarely) |
 
-1. In the spreadsheet: **Extensions > Apps Script**. You will see the existing file `UsableTickets.gs`. **Leave it as it is.**
-2. Click **+** next to *Files* > **Script**, name it `RdcChecker`, delete the empty function in it, and
-   paste the whole of `apps-script/RdcCheckerApi.gs`. Save (Ctrl+S).
-   (Every name in it starts with `rqa` / `RQA_`, so it cannot clash with `UsableTickets.gs`. It adds
-   `onOpen`, `doGet` and `doPost`, which the existing file does not have.)
-3. **Project Settings** (gear, left) > **Script Properties** > *Add script property*:
-   `QA_TOKEN` = a long random string (for example 40 random letters and digits). Keep it; it goes in `.env` too.
-4. Back in the spreadsheet, **reload the page**. A menu **RDC QA** appears.
-5. **RDC QA > Set up / repair sheet**. Google asks for permission the first time (the spreadsheet,
-   and Drive for failure screenshots): allow it, then run the menu item again.
+### Dev Tickets
 
-It creates or repairs these tabs. Data is never deleted, so it is safe to run again:
+- **A2** shows the next ticket (`12 | `). **Clear A2 (Delete key)** and a new row appears with that number,
+  the time and the date; A2 moves on to the next number. Type the ticket after the `|`:
+  `12 | FEAT: Settings - Fund Sources - Create Page`. Pick the dev in column D.
+- **G2** is the counter. To continue the team's shared numbering instead of starting at 1, type the next number in G2
+  and the same `N | ` in A2 (or set *First ticket number* in Settings before the first *Set up*).
+- Columns **E–I** (grey headers) are filled by the checker from the QA Tests linked to the ticket:
+  **QA Status** (*Verified*, *Failing*, *Not on Vercel yet*, *Partly checked*, *Not run yet*, *No QA test yet*),
+  Linked Tests, Pass, Fail, Last Checked. **J** is free notes.
 
-| Tab | Content | Who fills it |
-|---|---|---|
-| **RDC QA - Tests** | TC ID, Module, Test, Kind, Role, Steps to Test, Expected Result | the code (*Sync*) |
-| | **Reference (original)**, **Ticket Status**, **Dev Ticket**, **Remarks** (gold headers) | **QA** |
-| | Dev Ticket Title, Implemented on Vercel, Latest Result, Last Checked, Last Notes, Screenshot | the checker |
-| **RDC QA - Check Log** | One row per check: TC ID, Dev Ticket, Checker, Checked At, Environment, Result, Notes, Screenshot | the checker |
-| **RDC QA - Summary** | Per module: active tests, Pass, Fail, Blocked, Not Implemented, Not Started, Cancelled | formulas |
-| **RDC QA - Dev Tickets** | Per linked dev ticket: title, dev, date, QA Status, linked tests, counts | the checker (rebuilt on every run) |
-| **RDC QA - Settings** | Dropdown lists, plus the settings below | QA (rarely) |
+### QA Tests
 
-Settings you may change (column F/G of **RDC QA - Settings**):
+| Columns | Who |
+|---|---|
+| TC ID, Module, Test, Kind, Role, Steps to Test, Expected Result | the code, via *Sync* |
+| **Reference (original)**, **Ticket Status**, **Dev Ticket**, **Remarks** (gold headers) | **QA** |
+| Dev Ticket Title, Implemented on Vercel, Latest Result, Last Checked, Last Notes, Screenshot (grey headers) | the checker |
 
-| Setting | Default | Meaning |
-|---|---|---|
-| Dev ticket tab | `Usable Tickets - Leyeco` | Where ticket numbers are looked up |
-| Dev ticket first row | `4` | First ticket row on that tab |
-| Also list dev tickets matching (regex) | *(empty)* | e.g. `RDC\|IMS`: matching tickets with no QA test are listed as *No QA test yet* |
-| Screenshot folder (Drive) | `RDC QA Screenshots` | Where failure screenshots are saved |
+- **Dev Ticket**: the ticket number(s) the test covers (`12` or `12, 15`). Dev Ticket Title fills itself.
+- **Ticket Status = Cancelled**: the checker never runs or updates that test (row turns grey). Menu *RDC QA > Cancel selected tests* does it for a selection.
 
-Only **Cancelled** in Ticket Status stops the checker. *On Hold* is just a label for people.
+## One-time setup (sheet owner)
 
-## 2. Publish the web app
+1. Open the spreadsheet > **Extensions > Apps Script** (project **RDC QA**). The code is already there; if not,
+   paste `apps-script/RdcCheckerApi.gs` over `Code.gs` and save.
+2. Pick **rqaSetupSheet** in the function list at the top and click **Run**. Google asks for permission once
+   (*Review permissions* > your account > *Allow*): the script needs this spreadsheet, and Drive for failure screenshots.
+3. Back in the spreadsheet, reload. You get the five tabs above and a menu **RDC QA**. *RDC QA > Set up / repair spreadsheet*
+   can be run any time; it never deletes data.
+4. **Project Settings** (gear) > **Script Properties** > add `QA_TOKEN` = a long random string. It goes in `.env` too.
+5. **Deploy > New deployment** > type **Web app**, *Execute as* **Me**, *Who has access* **Anyone** > **Deploy**, copy the
+   URL ending in `/exec`. ("Anyone" only means no Google sign-in is needed; every request still needs the token.)
+   After later script changes: *Deploy > Manage deployments > Edit > Version: New version*. The URL stays the same.
 
-1. Apps Script: **Deploy > New deployment** > type **Web app**.
-2. *Execute as*: **Me**. *Who has access*: **Anyone**. ("Anyone" only means no Google sign-in is
-   needed to reach the URL. Every request still needs the token.)
-3. **Deploy**, then copy the **Web app URL** (it ends in `/exec`).
-4. After any later change to the script: **Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy**.
-   The URL stays the same.
+## Connect the checker
 
-## 3. Connect the checker
-
-In the checker UI, **Settings** tab (or `.env`):
+In the checker UI **Settings** tab (or `.env`):
 
 | Setting | Value |
 |---|---|
-| `SHEET_URL` | the spreadsheet's normal link |
-| `SHEET_WEBAPP_URL` | the Web app URL from step 2 |
-| `SHEET_TOKEN` | the `QA_TOKEN` value from step 1 |
+| `SHEET_URL` | the spreadsheet's link |
+| `SHEET_WEBAPP_URL` | the Web app URL from step 5 |
+| `SHEET_TOKEN` | the `QA_TOKEN` value from step 4 |
 | `CHECKER_NAME` | `RDC QA Bot` |
 | `ACCOUNT_ADMIN` | `username:password` of an administrator (an imported WordPress account works) |
 | `ACCOUNT_MEMBER` | `username:password` of a member that does **not** have every section |
 | `ALLOW_WRITE_TESTS` | `false` until you agree to let tests add + delete `QA-AUTO` records |
 
-Then **Sheet > Sync tests to the sheet**. The log should say `Sheet synced: N added`.
+Then **Sheet > Sync tests to the sheet** (all 114 tests appear on QA Tests) and **Run tests**.
 Accounts still on a default password (1234 / 12345) must sign in once by hand and change it.
-Until then, every test for that account is Blocked.
 
-## 4. Link tests to dev tickets
+## Daily use
 
-On **RDC QA - Tests**, type the dev ticket number(s) in **Dev Ticket** (e.g. `2151` or `2151, 2160`).
-Then *RDC QA > Refresh dev ticket links* (or just run the checker). **Dev Ticket Title** shows the ticket's text,
-or `(not found on the ticket tab)` for a mistyped number. The ticket appears on **RDC QA - Dev Tickets**.
-
-When a dev finishes a ticket, run only its tests:
-
-```bash
-npm run qa -- --ticket 2151 --push
-```
-
-## 5. Fill the references (Data tests)
-
-Run the **Data** kind once. Each Data test is Blocked with a note like
-`Number of users on Vercel is "512". Fill the Reference (original) column...`.
-Read the same figure on the original site and type it in **Reference (original)**. The next run compares them.
+- Dev logs a ticket on **Dev Tickets**; QA links the matching tests by typing the ticket number in **Dev Ticket** on **QA Tests**.
+- When the ticket is done: `npm run qa -- --ticket 12 --push` (or the UI field *Only tests for dev ticket(s)*).
+- The ticket's **QA Status** and the **Dashboard** update after every run (*RDC QA > Refresh dev ticket QA status* to force it).
+- **Data** tests stay Blocked until **Reference (original)** has the value from the original site; their notes show the Vercel value.
 
 ## Giving a teammate access
 
-They clone the repo and double-click `RDC Checker.bat`. You send them your `.env` privately
-(Settings tab > Copy), minus any accounts they should not use. They paste it in Settings > *Save pasted text*.
+Share the spreadsheet with them. For the checker: they clone the repo, double-click `RDC Checker.bat`, and paste the
+`.env` you send privately (Settings tab > Copy / paste > *Save pasted text*).
