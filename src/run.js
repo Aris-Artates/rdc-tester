@@ -6,7 +6,8 @@
  *   --kind Logic,Data          only these kinds (Functional, Logic, Data, Access, Pending)
  *   --role public|admin|member only tests that use this account
  *   --status Fail,Blocked      only tests whose LATEST sheet result is one of these (retest)
- *   --push                     write results to the sheet (Check Log + Tests tab)
+ *   --ticket 2151,2160         only tests linked to these dev tickets (sheet column "Dev Ticket")
+ *   --push                     write results to the sheet ("RDC QA - Check Log" + "RDC QA - Tests")
  *   --shots fail|all|none      screenshots (default fail)
  *   --headed                   show the browser
  *   --dry                      list what would run; no browser
@@ -44,6 +45,9 @@ if (sheetConfigured()) {
 } else console.log('Sheet not configured (SHEET_WEBAPP_URL / SHEET_TOKEN): no cancel list, no references, results go to the CSV only.');
 
 const only = list(opt('only')), modules = list(opt('module')), kinds = list(opt('kind')), roles = list(opt('role')), statuses = list(opt('status'));
+const tickets = list(opt('ticket'))?.map(s => s.replace(/\D/g, '')).filter(Boolean);
+if (tickets && !sheet.size) { console.log('--ticket needs the sheet (the Dev Ticket links live there).'); process.exit(1); }
+const linkedTo = row => String(row?.devTicket || '').split(/\D+/).filter(Boolean);
 const cancelled = [], notInSheet = [];
 const selected = catalog.filter(t => {
   if (only && !only.includes(t.id.toLowerCase())) return false;
@@ -52,6 +56,7 @@ const selected = catalog.filter(t => {
   if (roles && !roles.includes(t.role)) return false;
   const row = sheet.get(t.id);
   if (statuses && !statuses.includes(String(row?.latest || 'not started').toLowerCase())) return false;
+  if (tickets && !linkedTo(row).some(n => tickets.includes(n))) return false;
   if (isCancelled(row)) { cancelled.push(t.id); return false; }
   if (sheet.size && !row) notInSheet.push(t.id);
   return true;
@@ -62,6 +67,7 @@ const order = ['public', 'admin', 'member'];
 const groups = order.map(role => ({ role, tests: selected.filter(t => t.role === role).sort((a, b) => !!a.last - !!b.last) })).filter(g => g.tests.length);
 
 console.log(`\n${selected.length} tests to run on ${config.appUrl}.`);
+if (tickets) console.log(`  Linked to dev ticket ${tickets.join(', ')}: ${selected.map(t => t.id).join(', ') || 'none (fill the Dev Ticket column in the sheet)'}`);
 if (cancelled.length) console.log(`  Skipped (ticket Cancelled): ${cancelled.join(', ')}`);
 if (notInSheet.length) console.log(`  Not in the sheet yet (run "npm run sync-sheet"; their results are not pushed): ${notInSheet.join(', ')}`);
 for (const g of groups) console.log(`  ${g.role.padEnd(7)} ${g.tests.length} tests${g.role !== 'public' && !accountFor(g.role) ? `  (no ACCOUNT_${g.role.toUpperCase()} in .env: they will be Blocked)` : ''}`);

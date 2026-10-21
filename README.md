@@ -25,13 +25,28 @@ When a pending page gets built, its test starts reporting Pass / Fail by itself.
 ## Cancelled tickets
 
 Set a row's **Ticket Status** to **Cancelled** in the sheet (or select rows, then menu
-*RDC Checker > Cancel selected tickets*). From then on:
+*RDC QA > Cancel selected tests*). From then on:
 
 - the checker does not run it (`Skipped (ticket Cancelled)` in the log),
 - the sheet refuses any result for it, even from an old copy of the checker,
-- *Sync* never rewrites it, and the row is greyed out and left out of the Summary counts.
+- *Sync* never rewrites it, and the row is greyed out and left out of the RDC QA - Summary counts.
 
 Set it back to **Active** to resume.
+
+## Dev tickets
+
+The QA tabs live in the team's **Enhancement Checker** spreadsheet, next to the dev ticket log
+**Usable Tickets - Leyeco**. That tab is only read, never changed, and its `onEdit` counter keeps working.
+
+- Put the ticket number(s) a test covers in its **Dev Ticket** cell (`2151` or `2151, 2160`).
+  **Dev Ticket Title** fills itself from the ticket log.
+- **RDC QA - Dev Tickets** shows one row per linked ticket with its QA status:
+  *Verified* (every active test passes), *Failing*, *Not on Vercel yet*, *Partly checked*, *Not run yet*,
+  or *No QA test yet*. It refreshes after every run, or from *RDC QA > Refresh dev ticket links*.
+- When a dev finishes a ticket, run only its tests: UI field *Only tests for dev ticket(s)*, or
+  `npm run qa -- --ticket 2151 --push`.
+- Optional: the setting *Also list dev tickets matching (regex)* (e.g. `RDC|IMS`) also lists matching
+  tickets that have no test yet, as a QA to-do list.
 
 ## Quick start (Windows)
 
@@ -80,7 +95,6 @@ row gets into the sheet.
 | `src/app.js` | Everything the checker knows about the app's screens (sign-in, menus, tables) |
 | `src/run.js` | Runner: picks tests, skips Cancelled tickets, signs in per account, pushes results |
 | `src/sheet.js`, `src/sync.js` | Sheet web app client; sync tests into the sheet |
-| `src/make-sheet.js`, `sheet/RDC-QA-Checker.xlsx` | Ready-made sheet to import |
 | `apps-script/RdcCheckerApi.gs` | Google Apps Script for the sheet (API + setup menu) |
 | `docs/FINDINGS.md` | Differences found so far between the original and Vercel |
 | `results/` | Run logs, CSVs and screenshots (git-ignored) |

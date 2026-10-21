@@ -3,7 +3,7 @@
 A test lives in **two places** that share one **TC ID**:
 
 1. **Code** — `src/tests/<area>.js`: what the checker does.
-2. **Sheet** — one row on the **Tests** tab: the ticket people read, filter, cancel and fill references for.
+2. **Sheet** — one row on the **RDC QA - Tests** tab of the Enhancement Checker spreadsheet: the row people read, filter, cancel, link to a dev ticket and fill references for.
 
 The code is the source of truth for *what* is tested; the sheet is the source of truth for *whether*
 it is tested (Ticket Status) and for the original site's values (Reference).
@@ -33,7 +33,7 @@ Add an object to the file's `export default [ ... ]` list:
 ```js
 {
   id: 'RPT-001',                       // unique, never reused
-  module: 'Reports',                   // groups rows in the sheet and the Summary tab
+  module: 'Reports',                   // groups rows in the sheet and the RDC QA - Summary tab
   kind: 'Functional',                  // Functional | Logic | Data | Access | Pending
   role: 'admin',                       // public (no sign-in) | admin | member
   title: 'Annex A: filtering by agency narrows the list',
@@ -125,25 +125,38 @@ npm run qa -- --only RPT-001 --headed
 npm run sync-sheet
 ```
 
-New IDs are added at the bottom of **Tests** with Ticket Status **Active**. For existing active rows,
-Module / Test / Kind / Role / Steps / Expected are refreshed from the code. Ticket Status, Reference
-(original) and Remarks are never touched, and **Cancelled rows are never changed**.
+New IDs are added at the bottom of **RDC QA - Tests** with Ticket Status **Active**. For existing active rows,
+Module / Test / Kind / Role / Steps / Expected are refreshed from the code. Ticket Status, Dev Ticket,
+Reference (original) and Remarks are never touched, and **Cancelled rows are never changed**.
 Use `npm run sync-sheet -- --add-only` to add new rows without refreshing existing ones.
 
-**Option B — by hand:** add a row on **Tests** with the same **TC ID** as the code, fill Module, Test,
+**Option B — by hand:** add a row on **RDC QA - Tests** with the same **TC ID** as the code, fill Module, Test,
 Kind, Role, Steps to Test, Expected Result, set **Ticket Status = Active**. (The next Sync overwrites the
 descriptive columns with the code's text, so keep them the same.)
 
 A test that is in the code but **not** in the sheet still runs, but its result is **not** written
 to the sheet (the log says `Not in the sheet yet`).
 
-## Step 5. Run it for real and commit
+## Step 5. Link it to its dev ticket
+
+If the test checks work from a dev ticket in **Usable Tickets - Leyeco**, type the ticket number in the
+row's **Dev Ticket** cell (several: `2151, 2160`). The link lives only in the sheet, not in the code,
+so QA can change it without a commit. **Dev Ticket Title** and the **RDC QA - Dev Tickets** tab update
+on the next run, or right away with *RDC QA > Refresh dev ticket links*.
+
+## Step 6. Run it for real and commit
 
 ```bash
 npm run qa -- --only RPT-001 --push
 ```
 
-Commit the test file (and, if you changed many tests, regenerate the template with `npm run make-sheet`).
+Or, once linked, everything for that ticket:
+
+```bash
+npm run qa -- --ticket 2151 --push
+```
+
+Commit the test file.
 
 ---
 

@@ -98,7 +98,7 @@ const send = (res, code, body, type = 'application/json') => {
   res.end(type === 'application/json' ? JSON.stringify(body) : body);
 };
 const readBody = req => new Promise(r => { let b = ''; req.on('data', c => (b += c)); req.on('end', () => { try { r(JSON.parse(b || '{}')); } catch (_) { r({}); } }); });
-const SCRIPTS = { run: 'run.js', sync: 'sync.js', sheet: 'make-sheet.js' };
+const SCRIPTS = { run: 'run.js', sync: 'sync.js' };
 
 const server = http.createServer(async (req, res) => {
   // Same-origin only: a web page elsewhere must not be able to drive this server.
@@ -126,7 +126,7 @@ const server = http.createServer(async (req, res) => {
       const { kind = 'run', args = [], title } = await readBody(req);
       if (!SCRIPTS[kind] || !Array.isArray(args) || args.some(a => typeof a !== 'string')) return send(res, 400, { error: 'bad request' });
       const job = startJob(SCRIPTS[kind], args, title || kind);
-      const npm = { run: 'qa', sync: 'sync-sheet', sheet: 'make-sheet' }[kind];
+      const npm = { run: 'qa', sync: 'sync-sheet' }[kind];
       return send(res, 200, { id: job.id, cmd: `npm run ${npm}${args.length ? ' -- ' + args.map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' ') : ''}` });
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/stream/')) {
