@@ -3,10 +3,10 @@
 A test lives in **two places** that share one **TC ID**:
 
 1. **Code** — `src/tests/<area>.js`: what the checker does.
-2. **Sheet** — one row on the **QA Tests** tab of the **RDC8 IMS - QA & Dev Tickets** spreadsheet: the row people read, filter, cancel, link to a dev ticket and fill references for.
+2. **Sheet** — one row on the **Test Cases** tab of the **RDC8 IMS - QA & Dev Tickets** spreadsheet: the row people read, filter, close, link to a dev ticket and fill references for.
 
 The code is the source of truth for *what* is tested; the sheet is the source of truth for *whether*
-it is tested (Ticket Status) and for the original site's values (Reference).
+it is tested (Case Status) and for the original site's values (Reference).
 
 ---
 
@@ -125,13 +125,13 @@ npm run qa -- --only RPT-001 --headed
 npm run sync-sheet
 ```
 
-New IDs are added at the bottom of **QA Tests** with Ticket Status **Active**. For existing active rows,
-Module / Test / Kind / Role / Steps / Expected are refreshed from the code. Ticket Status, Dev Ticket,
-Reference (original) and Remarks are never touched, and **Cancelled rows are never changed**.
+New IDs are added at the bottom of **Test Cases** with Source **Auto** and Case Status **Active**. For existing active rows,
+Module / Test / Kind / Steps / Expected are refreshed from the code. Case Status, Dev Ticket, Result,
+Reference (original) and Remarks are never touched, and **Closed / Reworked cases are never changed**.
 Use `npm run sync-sheet -- --add-only` to add new rows without refreshing existing ones.
 
-**Option B — by hand:** add a row on **QA Tests** with the same **TC ID** as the code, fill Module, Test,
-Kind, Role, Steps to Test, Expected Result, set **Ticket Status = Active**. (The next Sync overwrites the
+**Option B — by hand:** add a row on **Test Cases** with the same **TC ID** as the code, fill Module, Test,
+Kind, Steps to Test, Expected Result, set **Source = Auto** and **Case Status = Active**. (The next Sync overwrites the
 descriptive columns with the code's text, so keep them the same.)
 
 A test that is in the code but **not** in the sheet still runs, but its result is **not** written
@@ -162,9 +162,9 @@ Commit the test file.
 
 ## Retiring a test
 
-Do **not** delete the code or the row. Set **Ticket Status = Cancelled** in the sheet: the checker skips it,
+Do **not** delete the code or the row. Set **Case Status = Closed** (or **Reworked** with the ticket in Reworked By) in the sheet: the checker skips it,
 the sheet refuses results for it, and its history stays. If you also delete it from the code later,
-leave the sheet row as Cancelled.
+leave the sheet row as Closed.
 
 ## Writing safe write-tests
 

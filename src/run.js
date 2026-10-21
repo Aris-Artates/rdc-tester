@@ -13,14 +13,14 @@
  *   --dry                      list what would run; no browser
  *   --list                     print the whole test catalog and exit
  *
- * Tickets set to "Cancelled" in the sheet are never run and never written.
+ * Test cases set to Closed or Reworked in the sheet are never run and never written.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { config, accountFor, ROOT } from './config.js';
 import { loadCatalog } from './catalog.js';
-import { loadSheetRows, sheetConfigured, isCancelled, pushResults, writeCsv } from './sheet.js';
+import { loadSheetRows, sheetConfigured, isRetired, pushResults, writeCsv } from './sheet.js';
 import { login, pathOf } from './app.js';
 import { makeT, Outcome } from './harness.js';
 import { notify, summaryLine } from './notify.js';
@@ -57,7 +57,7 @@ const selected = catalog.filter(t => {
   const row = sheet.get(t.id);
   if (statuses && !statuses.includes(String(row?.latest || 'not started').toLowerCase())) return false;
   if (tickets && !linkedTo(row).some(n => tickets.includes(n))) return false;
-  if (isCancelled(row)) { cancelled.push(t.id); return false; }
+  if (isRetired(row)) { cancelled.push(t.id); return false; }
   if (sheet.size && !row) notInSheet.push(t.id);
   return true;
 });
@@ -68,7 +68,7 @@ const groups = order.map(role => ({ role, tests: selected.filter(t => t.role ===
 
 console.log(`\n${selected.length} tests to run on ${config.appUrl}.`);
 if (tickets) console.log(`  Linked to dev ticket ${tickets.join(', ')}: ${selected.map(t => t.id).join(', ') || 'none (fill the Dev Ticket column in the sheet)'}`);
-if (cancelled.length) console.log(`  Skipped (ticket Cancelled): ${cancelled.join(', ')}`);
+if (cancelled.length) console.log(`  Skipped (case Closed / Reworked): ${cancelled.join(', ')}`);
 if (notInSheet.length) console.log(`  Not in the sheet yet (run "npm run sync-sheet"; their results are not pushed): ${notInSheet.join(', ')}`);
 for (const g of groups) console.log(`  ${g.role.padEnd(7)} ${g.tests.length} tests${g.role !== 'public' && !accountFor(g.role) ? `  (no ACCOUNT_${g.role.toUpperCase()} in .env: they will be Blocked)` : ''}`);
 if (opt('dry')) { for (const g of groups) for (const t of g.tests) console.log(`    ${t.id} ${t.title}`); process.exit(0); }
@@ -116,7 +116,7 @@ async function flush(label) {
   try {
     const { written, skipped } = await pushResults(batch);
     pushedTotal += written; skippedBySheet = skippedBySheet.concat(skipped);
-    console.log(`  -> ${written} results written to the sheet (${label})${skipped.length ? `; refused as Cancelled: ${skipped.join(', ')}` : ''}`);
+    console.log(`  -> ${written} results written to the sheet (${label})${skipped.length ? `; refused as Closed / Reworked: ${skipped.join(', ')}` : ''}`);
   } catch (e) {
     pushedUpTo -= batch.length;
     console.log(`  -> PUSH FAILED (${label}): ${e.message}. Kept in the CSV; retried with the next batch.`);

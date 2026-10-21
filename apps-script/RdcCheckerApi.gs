@@ -1,138 +1,348 @@
 /**
- * RDC8 IMS - QA & Dev Tickets spreadsheet script.
+ * RDC8 IMS - QA & Dev Tickets spreadsheet script (project "RDC QA").
  *
- * Paste this whole file into the spreadsheet's Apps Script (Extensions > Apps Script), save,
- * reload the spreadsheet, then menu  RDC QA > Set up / repair spreadsheet  once.
- * See docs/SHEET-SETUP.md in the rdc-tester repo.
+ * Paste this whole file over Code.gs (Extensions > Apps Script), save, pick rqaSetupSheet and Run once.
+ * See docs/SHEET-SETUP.md and docs/WORKFLOW.md in the rdc-tester repo.
  *
- * Tabs (in this order):
- *   Dashboard    QA and dev ticket overview (formulas + charts, rebuilt by Set up)
- *   Dev Tickets  the RDC ticket log: clear A2 to log the next ticket; QA columns fill themselves
- *   QA Tests     one row per checker test; Ticket Status / Dev Ticket / Reference are filled by people
- *   Check Log    one row per check the checker made
- *   Settings     dropdown lists and settings
+ * Tabs: Dashboard | Dev Tickets | Test Cases | QA Dashboard | Dev Dashboard | Check Log | Settings
  *
- * Web app (Deploy > New deployment > Web app, Execute as: Me, Who has access: Anyone).
- * Every request must carry the token stored in Script Property QA_TOKEN.
+ * The flow it supports:
+ *   Dev:  clear Dev Tickets!A2 -> new ticket (In Dev) -> type the title -> tick Freedcamp -> set Ready for QA.
+ *   QA:   add test cases (Test Cases tab, Dev Ticket = ticket number) -> pick a Result per case.
+ *         Any Fail -> ticket Failed. Dev ticks "Fix" on it -> a fix ticket is made -> ticket shows Fixing.
+ *         Fix ticket set to Ready for QA -> ticket shows Ready for Re-test on the QA Dashboard.
+ *         All active cases Pass -> ticket Passed (and its fix tickets too).
+ *   Tickets and test cases can each be Reworked (with the ticket that reworked them) or Closed, independently.
  *
- *   GET  ?token=..&action=tests   -> { rows: [ { id, module, title, kind, role, reference, ticketStatus, devTicket, latest } ] }
+ * Web app for the automated checker (Deploy > Web app, Execute as: Me, Who has access: Anyone),
+ * every request carries the token in Script Property QA_TOKEN (menu: RDC QA > Create checker token):
+ *   GET  ?token=..&action=tests -> { rows: [ { id, module, title, kind, reference, caseStatus, devTicket, latest } ] }
  *   POST { token, action: 'results', rows: [ { tcId, checker, env, result, notes, screenshot } ] }
- *        -> appends to the Check Log, updates the test's Latest columns and the Dev Tickets QA columns.
- *           Cancelled tests are refused.
- *   POST { token, action: 'sync', tests: [ { id, module, title, kind, role, steps, expected, reference, pending } ], update }
- *        -> adds tests missing from QA Tests; refreshes descriptions of active ones. Cancelled rows are left alone.
+ *   POST { token, action: 'sync', tests: [ { id, module, title, kind, steps, expected, reference, pending } ], update }
+ *
+ * Freedcamp (menu: RDC QA > Connect Freedcamp): ticking a ticket's Freedcamp box creates the task with
+ * the team's fixed settings; tasks are marked complete when the ticket is Passed or Closed.
  */
 
-var RQA_DASH = 'Dashboard';
-var RQA_TICKETS = 'Dev Tickets';
-var RQA_TESTS = 'QA Tests';
-var RQA_LOG = 'Check Log';
-var RQA_SETTINGS = 'Settings';
-var RQA_ORDER = [RQA_DASH, RQA_TICKETS, RQA_TESTS, RQA_LOG, RQA_SETTINGS];
-var RQA_CANCELLED = 'Cancelled';
+var RQA_DASH = 'Dashboard', RQA_TICKETS = 'Dev Tickets', RQA_CASES = 'Test Cases', RQA_QA = 'QA Dashboard',
+  RQA_DEV = 'Dev Dashboard', RQA_LOG = 'Check Log', RQA_SETTINGS = 'Settings';
+var RQA_ORDER = [RQA_DASH, RQA_TICKETS, RQA_CASES, RQA_QA, RQA_DEV, RQA_LOG, RQA_SETTINGS];
 var RQA_NAVY = '#1f2a44', RQA_GOLD = '#8a6d1d', RQA_GREY = '#5f6b7a';
+var RQA_TZ = 'Asia/Manila';
 
-// ---- QA Tests columns, by header text (found by name, so they can be moved)
-var RQA_COLS = {
-  id: 'TC ID', module: 'Module', title: 'Test', kind: 'Kind', role: 'Role',
-  steps: 'Steps to Test', expected: 'Expected Result', reference: 'Reference (original)',
-  ticket: 'Ticket Status', devTicket: 'Dev Ticket', devTitle: 'Dev Ticket Title',
-  implemented: 'Implemented on Vercel', latest: 'Latest Result',
-  checkedAt: 'Last Checked', notes: 'Last Notes', shot: 'Screenshot', remarks: 'Remarks',
+// ---- Dev Tickets: A2 = "<next> | " (clear it to log a ticket), counter in G2, headers row 3, tickets from row 4.
+var RQA_T = { first: 4, head: 3, counter: 'A2', brain: 'G2' };
+var RQA_TK = {
+  ticket: 'Ticket', time: 'Time', date: 'Date', dev: 'Dev', status: 'Status', desc: 'Description', fc: 'Freedcamp',
+  fix: 'Fix', fixOf: 'Fix Of', reworkedBy: 'Reworked By', fixes: 'Fix Tickets', type: 'Type', page: 'Page',
+  cases: 'Test Cases', qa: 'QA Result', lastTested: 'Last Tested', readyAt: 'Ready At', notes: 'Notes',
 };
-var RQA_TEST_HEADERS = ['id', 'module', 'title', 'kind', 'role', 'steps', 'expected', 'reference', 'ticket', 'devTicket', 'devTitle',
-  'implemented', 'latest', 'checkedAt', 'notes', 'shot', 'remarks'].map(function (k) { return RQA_COLS[k]; });
-var RQA_LOG_HEADERS = ['TC ID', 'Dev Ticket', 'Checker', 'Checked At', 'Environment', 'Result', 'Notes', 'Screenshot'];
+var RQA_TK_ORDER = ['ticket', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
+  'cases', 'qa', 'lastTested', 'readyAt', 'notes'];
+var RQA_TK_AUTO = ['fixes', 'type', 'page', 'cases', 'qa', 'lastTested', 'readyAt'];
 
-// ---- Dev Tickets layout (same idea as the team's "Usable Tickets" tab)
-//   A2 = "<next> | " (clear it to log a ticket), G2 = next number. Header row 3, tickets from row 4.
-//   A: "123 | TYPE: Page - Sub-page - Task", B: time, C: date, D: dev, E..I: QA (auto), J: notes.
-var RQA_T = { first: 4, counter: 'A2', brain: 'G2' };
-var RQA_TICKET_HEADERS = ['Ticket', 'Time', 'Date', 'Dev', 'QA Status', 'Linked Tests', 'Pass', 'Fail', 'Last Checked', 'Notes'];
-var RQA_TICKET_QA = 5; // first auto column (E); 5 auto columns E..I
+// ---- Test Cases: header row 1.
+var RQA_TC = {
+  id: 'TC ID', devTicket: 'Dev Ticket', module: 'Module', title: 'Test', kind: 'Kind', source: 'Source',
+  steps: 'Steps to Test', expected: 'Expected Result', reference: 'Reference (original)', caseStatus: 'Case Status',
+  reworkedBy: 'Reworked By', result: 'Result', checkedAt: 'Last Checked', testedBy: 'Tested By', notes: 'Notes',
+  shot: 'Screenshot', devTitle: 'Dev Ticket Title', implemented: 'Implemented on Vercel', remarks: 'Remarks',
+};
+var RQA_TC_ORDER = ['id', 'devTicket', 'module', 'title', 'kind', 'source', 'steps', 'expected', 'reference', 'caseStatus',
+  'reworkedBy', 'result', 'checkedAt', 'testedBy', 'notes', 'shot', 'devTitle', 'implemented', 'remarks'];
+var RQA_LOG_HEADERS = ['TC ID', 'Dev Ticket', 'Tested By', 'Checked At', 'Environment', 'Result', 'Notes', 'Screenshot'];
 
+var RQA_S = { inDev: 'In Dev', ready: 'Ready for QA', passed: 'Passed', failed: 'Failed', fixing: 'Fixing',
+  retest: 'Ready for Re-test', reworked: 'Reworked', closed: 'Closed' };
 var RQA_LISTS = {
-  'Ticket Status': ['Active', 'On Hold', RQA_CANCELLED],
-  'Result': ['Pass', 'Fail', 'Blocked', 'Not Implemented', 'Not Started'],
-  'Kind': ['Functional', 'Logic', 'Data', 'Access', 'Pending'],
-  'Role': ['public', 'admin', 'member'],
-  'Dev': ['Aris', 'Jondie', 'Shean', 'Kurt'],
+  'Case Status': ['Active', 'Reworked', 'Closed'],
+  'Ticket Status': [RQA_S.inDev, RQA_S.ready, RQA_S.failed, RQA_S.fixing, RQA_S.retest, RQA_S.passed, RQA_S.reworked, RQA_S.closed],
+  'Result': ['Pass', 'Fail', 'Blocked', 'Not Implemented'],
+  'Kind': ['Functional', 'Logic', 'Data', 'Access', 'Pending', 'Manual'],
+  'Dev': ['Aris', 'Jondie', 'Shean', 'Kenneth', 'Kurt'],
+  'Freedcamp Name': ['Aris A.', 'Jondie Mar G.', 'Shean T.', 'Kenneth V.', ''],
 };
+var RQA_LIST_KEYS = Object.keys(RQA_LISTS);
+var RQA_SET_COL = RQA_LIST_KEYS.length + 2; // settings live two columns right of the lists
 var RQA_DEFAULT_SETTINGS = [
   ['Setting', 'Value'],
   ['App under test (Vercel)', 'https://rdc8ims.vercel.app'],
   ['Original site (reference only)', 'https://evims.rdc8ims.online'],
   ['First ticket number', '1'],
+  ['Fix ticket type', 'BUG'],
   ['Screenshot folder (Drive)', 'RDC QA Screenshots'],
-  ['Ticket Status that the checker skips', RQA_CANCELLED],
-  ['Token', 'Stored in Apps Script > Project Settings > Script Properties > QA_TOKEN (never here)'],
+  ['Freedcamp project ID', '3783356'],
+  ['Freedcamp followers', 'Meldz A.'],
+  ['Freedcamp priority (0-3)', '3'],
+  ['Freedcamp: complete task when ticket Passed/Closed', 'Yes'],
 ];
-var RQA_SET_COL = 7; // settings live in G:H, lists in A:E
+var RQA_STATUS_COLOURS = {
+  'In Dev': '#e8eefc', 'Ready for QA': '#fff3cd', 'Failed': '#f8d7da', 'Fixing': '#fde2c8', 'Ready for Re-test': '#ffe08a',
+  'Passed': '#d4edda', 'Reworked': '#e6dcf5', 'Closed': '#e0e0e0',
+};
+var RQA_RESULT_COLOURS = { 'Pass': '#d4edda', 'Fail': '#f8d7da', 'Blocked': '#fff3cd', 'Not Implemented': '#d6d8f5' };
 
-// ---------------------------------------------------------------- menu, onEdit
+// ================================================================ menu + simple onEdit
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('RDC QA')
     .addItem('Set up / repair spreadsheet', 'rqaSetupSheet')
-    .addItem('Refresh dev ticket QA status', 'rqaRefreshDevTickets')
+    .addItem('Refresh statuses', 'rqaRefresh')
     .addSeparator()
-    .addItem('Cancel selected tests', 'rqaCancelSelected')
-    .addItem('Re-activate selected tests', 'rqaActivateSelected')
+    .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
+    .addItem('Disconnect Freedcamp', 'rqaDisconnectFreedcamp')
+    .addItem('Create checker token…', 'rqaCreateToken')
     .addToUi();
 }
 
-/** Clearing Dev Tickets!A2 logs the next ticket number with the time and date, like the team's ticket tab. */
+/** Sheet-only automation (no outside calls, so it works for every editor). Freedcamp runs in rqaOnEditFreedcamp. */
 function onEdit(e) {
   if (!e || !e.range) return;
-  var sh = e.range.getSheet();
-  if (sh.getName() !== RQA_TICKETS || e.range.getA1Notation() !== RQA_T.counter) return;
-  var v = e.range.getValue();
-  if (v && String(v).trim() !== '') return;
+  var sh = e.range.getSheet(), name = sh.getName();
+  if (name === RQA_TICKETS) return rqaTicketEdit_(e, sh);
+  if (name === RQA_CASES) return rqaCaseEdit_(e, sh);
+}
+
+function rqaTicketEdit_(e, sh) {
+  var r = e.range.getRow(), c = e.range.getColumn();
+  if (e.range.getA1Notation() === RQA_T.counter) {
+    var v = e.range.getValue();
+    if (!v || String(v).trim() === '') rqaNewTicket_(sh, null);
+    return;
+  }
+  if (r < RQA_T.first || e.range.getNumRows() > 1) return;
+  var h = rqaHeaders_(sh, RQA_T.head);
+  if (c === h[RQA_TK.fix] + 1 && e.value === 'TRUE') {
+    sh.getRange(r, c).setValue(false);
+    var parent = rqaParseTicket_(sh.getRange(r, h[RQA_TK.ticket] + 1).getDisplayValue());
+    if (!parent) return SpreadsheetApp.getActive().toast('Type the ticket title first.', 'Fix ticket', 5);
+    var num = rqaNewTicket_(sh, { fixOf: parent.num, dev: sh.getRange(r, h[RQA_TK.dev] + 1).getValue(),
+      title: rqaSetting_('Fix ticket type') + ': ' + (rqaPageOf_(parent.title) || parent.title) + ' - Fix for #' + parent.num });
+    SpreadsheetApp.getActive().toast('Fix ticket #' + num + ' created at the bottom. Edit its title if needed.', 'Fix ticket', 6);
+    return rqaRefresh();
+  }
+  if (c === h[RQA_TK.status] + 1) {
+    if (e.value === RQA_S.ready) sh.getRange(r, h[RQA_TK.readyAt] + 1).setValue(new Date());
+    return rqaRefresh();
+  }
+  if (c === h[RQA_TK.ticket] + 1 || c === h[RQA_TK.fixOf] + 1) return rqaRefresh();
+  if (c === h[RQA_TK.fc] + 1 && e.value === 'TRUE' && !rqaFreedcampConnected_()) {
+    sh.getRange(r, c).setValue(false);
+    SpreadsheetApp.getActive().toast('Freedcamp is not connected yet: RDC QA > Connect Freedcamp.', 'Freedcamp', 6);
+  }
+}
+
+function rqaCaseEdit_(e, sh) {
+  var r = e.range.getRow(), c = e.range.getColumn();
+  if (r < 2 || e.range.getNumRows() > 1) return;
+  var h = rqaHeaders_(sh, 1);
+  var cell = function (k) { return sh.getRange(r, h[RQA_TC[k]] + 1); };
+  // A new manual test case: typing its Test gives it an ID, Source and status.
+  if (c === h[RQA_TC.title] + 1 && e.value && !cell('id').getValue()) {
+    cell('id').setValue(rqaNextManualId_(sh, h));
+    cell('source').setValue('Manual'); cell('kind').setValue('Manual'); cell('caseStatus').setValue('Active');
+  }
+  // Picking a Result is the whole manual test: time, tester and log entry are filled in.
+  if (c === h[RQA_TC.result] + 1 && e.value) {
+    var now = new Date(), who = rqaWho_();
+    cell('checkedAt').setValue(now); cell('testedBy').setValue(who);
+    if (e.value !== 'Blocked') cell('implemented').setValue(e.value === 'Not Implemented' ? 'No' : 'Yes');
+    rqaAppendLog_([{ id: cell('id').getValue(), ticket: cell('devTicket').getValue(), who: who, at: now, env: 'Manual', result: e.value, notes: cell('notes').getValue(), link: '' }]);
+  }
+  if ([RQA_TC.result, RQA_TC.devTicket, RQA_TC.caseStatus].some(function (k) { return c === h[k] + 1; })) rqaRefresh();
+}
+
+/** Adds the next ticket row. Returns its number. */
+function rqaNewTicket_(sh, opts) {
   var lock = LockService.getDocumentLock();
   lock.waitLock(10000);
   try {
     var num = Number(sh.getRange(RQA_T.brain).getValue());
-    if (!num) return;
-    var row = Math.max(sh.getLastRow() + 1, RQA_T.first);
+    if (!num) return 0;
+    var h = rqaHeaders_(sh, RQA_T.head);
+    var row = Math.max(rqaLastTicketRow_(sh, h) + 1, RQA_T.first);
     var now = new Date();
-    // The date is a real date (shown mm/dd/yy) so the Dashboard can count tickets per week.
-    var today = new Date(Utilities.formatDate(now, 'GMT+8', 'yyyy/MM/dd'));
-    sh.getRange(row, 1, 1, 3).setValues([[num + ' | ', Utilities.formatDate(now, 'GMT+8', 'hh:mm a'), today]]);
-    sh.getRange(row, 3).setNumberFormat('mm/dd/yy');
+    var set = function (k, v) { sh.getRange(row, h[RQA_TK[k]] + 1).setValue(v); };
+    set('ticket', num + ' | ' + (opts && opts.title ? opts.title : ''));
+    set('time', Utilities.formatDate(now, RQA_TZ, 'hh:mm a'));
+    set('date', new Date(Utilities.formatDate(now, RQA_TZ, 'yyyy/MM/dd')));
+    set('status', RQA_S.inDev);
+    if (opts && opts.dev) set('dev', opts.dev);
+    if (opts && opts.fixOf) set('fixOf', Number(opts.fixOf));
     sh.getRange(RQA_T.brain).setValue(num + 1);
     sh.getRange(RQA_T.counter).setValue((num + 1) + ' | ');
+    return num;
   } finally {
     lock.releaseLock();
   }
 }
 
-// ---------------------------------------------------------------- setup
+function rqaLastTicketRow_(sh, h) {
+  var last = sh.getLastRow();
+  if (last < RQA_T.first) return RQA_T.first - 1;
+  var vals = sh.getRange(RQA_T.first, h[RQA_TK.ticket] + 1, last - RQA_T.first + 1, 1).getValues();
+  for (var i = vals.length - 1; i >= 0; i--) if (String(vals[i][0]).trim() !== '') return RQA_T.first + i;
+  return RQA_T.first - 1;
+}
 
-/** Creates or repairs every tab, header, dropdown, colour rule and the Dashboard. Data is never deleted. */
+function rqaNextManualId_(sh, h) {
+  var ids = sh.getLastRow() > 1 ? sh.getRange(2, h[RQA_TC.id] + 1, sh.getLastRow() - 1, 1).getValues() : [];
+  var max = 0;
+  ids.forEach(function (r) { var m = String(r[0]).match(/^MAN-(\d+)$/); if (m) max = Math.max(max, Number(m[1])); });
+  return 'MAN-' + ('00' + (max + 1)).slice(-3);
+}
+
+function rqaWho_() {
+  var email = '';
+  try { email = Session.getActiveUser().getEmail(); } catch (_) {}
+  return email ? email.split('@')[0] : 'Manual';
+}
+
+// ================================================================ the status engine
+
+/** "12 | FEAT: Settings - Fund Sources - Create Page" -> { num: '12', type: 'FEAT', title: 'Settings - Fund Sources - Create Page' } */
+function rqaParseTicket_(text) {
+  var m = String(text || '').match(/^\s*(\d+)\s*\|\s*(?:([A-Za-z/ ]+?)\s*:\s*)?(.*)$/);
+  if (!m || !m[3].trim()) return null;
+  return { num: m[1], type: (m[2] || '').trim().toUpperCase(), title: m[3].trim() };
+}
+/** "Settings - Fund Sources - Create Page" -> "Settings - Fund Sources" (everything before the last " - "). */
+function rqaPageOf_(title) {
+  var parts = String(title || '').split(/\s+-\s+/);
+  return parts.length > 1 ? parts.slice(0, -1).join(' - ') : '';
+}
+function rqaTicketNums_(v) { return String(v || '').split(/[^0-9]+/).filter(String); }
+var RQA_RETIRED = /^(closed|reworked|cancel+ed)$/i;
+
+/**
+ * Recomputes every automatic cell: each ticket's Type, Page, Test Cases, QA Result, Fix Tickets, Last Tested
+ * and Status; each test case's Dev Ticket Title. Reworked and Closed tickets keep their status.
+ */
+function rqaRefresh() {
+  var ss = SpreadsheetApp.getActive();
+  var tk = ss.getSheetByName(RQA_TICKETS), cs = ss.getSheetByName(RQA_CASES);
+  if (!tk || !cs) return;
+  var th = rqaHeaders_(tk, RQA_T.head), ch = rqaHeaders_(cs, 1);
+  var lastT = rqaLastTicketRow_(tk, th);
+  var tWidth = tk.getLastColumn();
+  var tVals = lastT >= RQA_T.first ? tk.getRange(RQA_T.first, 1, lastT - RQA_T.first + 1, tWidth).getValues() : [];
+  var tDisp = lastT >= RQA_T.first ? tk.getRange(RQA_T.first, th[RQA_TK.ticket] + 1, lastT - RQA_T.first + 1, 1).getDisplayValues() : [];
+  var tg = function (row, k) { return row[th[RQA_TK[k]]]; };
+
+  var tickets = {}, order = [];
+  tVals.forEach(function (row, i) {
+    var p = rqaParseTicket_(tDisp[i][0]);
+    if (!p) return;
+    var t = { num: p.num, i: i, type: p.type, title: p.title, page: rqaPageOf_(p.title), status: String(tg(row, 'status') || ''),
+      fixOf: String(tg(row, 'fixOf') || '').replace(/\D/g, ''), readyAt: tg(row, 'readyAt') instanceof Date ? tg(row, 'readyAt') : null,
+      cases: [], active: [], fixes: [] };
+    tickets[p.num] = t; order.push(t);
+  });
+  order.forEach(function (t) { if (t.fixOf && tickets[t.fixOf]) tickets[t.fixOf].fixes.push(t); });
+
+  // Test cases, and their Dev Ticket Title.
+  var lastC = cs.getLastRow();
+  var cVals = lastC > 1 ? cs.getRange(2, 1, lastC - 1, cs.getLastColumn()).getValues() : [];
+  var cg = function (row, k) { return ch[RQA_TC[k]] == null ? '' : row[ch[RQA_TC[k]]]; };
+  var titles = [];
+  cVals.forEach(function (row) {
+    var id = String(cg(row, 'id')).trim(), nums = rqaTicketNums_(cg(row, 'devTicket'));
+    titles.push([nums.map(function (n) { var t = tickets[n]; return t ? n + ' | ' + (t.type ? t.type + ': ' : '') + t.title : n + ' | (not on Dev Tickets)'; }).join('\n')]);
+    if (!id) return;
+    var c = { id: id, result: String(cg(row, 'result') || ''), at: cg(row, 'checkedAt') instanceof Date ? cg(row, 'checkedAt') : null,
+      notes: String(cg(row, 'notes') || ''), retired: RQA_RETIRED.test(String(cg(row, 'caseStatus') || '').trim()) };
+    nums.forEach(function (n) { if (tickets[n]) { tickets[n].cases.push(c); if (!c.retired) tickets[n].active.push(c); } });
+  });
+  if (titles.length && ch[RQA_TC.devTitle] != null) cs.getRange(2, ch[RQA_TC.devTitle] + 1, titles.length, 1).setValues(titles);
+
+  // Status of ordinary tickets first, then of fix tickets (they follow their parent's re-test).
+  var lastFail = function (t) { var m = null; t.active.forEach(function (c) { if (c.result === 'Fail' && c.at && (!m || c.at > m)) m = c.at; }); return m; };
+  var derive = function (t) {
+    if (t.status === RQA_S.reworked || t.status === RQA_S.closed || !t.active.length) return t.status || RQA_S.inDev;
+    var fails = t.active.filter(function (c) { return c.result === 'Fail'; });
+    if (fails.length) {
+      var fix = t.fixes[t.fixes.length - 1], failAt = lastFail(t);
+      if (!fix || fix.status === RQA_S.failed) return RQA_S.failed;
+      if ((fix.status === RQA_S.ready || fix.status === RQA_S.passed) && fix.readyAt && (!failAt || fix.readyAt > failAt)) return RQA_S.retest;
+      if (fix.status === RQA_S.ready && fix.readyAt && failAt && failAt >= fix.readyAt) { fix.status = RQA_S.failed; return RQA_S.failed; }
+      return RQA_S.fixing;
+    }
+    if (t.active.every(function (c) { return c.result === 'Pass'; })) return RQA_S.passed;
+    // Some cases not run yet: anything QA was waiting on goes back to "Ready for QA".
+    if ([RQA_S.failed, RQA_S.fixing, RQA_S.retest].indexOf(t.status) >= 0) return RQA_S.ready;
+    return t.status || RQA_S.inDev;
+  };
+  order.forEach(function (t) { if (!t.fixOf || t.active.length) t.newStatus = derive(t); });
+  order.forEach(function (t) {
+    if (t.newStatus) return;
+    var p = tickets[t.fixOf];
+    if (t.status === RQA_S.reworked || t.status === RQA_S.closed) t.newStatus = t.status;
+    else if (p && p.newStatus === RQA_S.passed && (t.status === RQA_S.ready || t.status === RQA_S.passed)) t.newStatus = RQA_S.passed;
+    else t.newStatus = t.status || RQA_S.inDev; // includes Failed set by derive() above
+  });
+
+  // Write the automatic columns in one go per column.
+  if (order.length) {
+    var col = function (k, fn) {
+      var vals = tVals.map(function (row) { return [row[th[RQA_TK[k]]]]; });
+      order.forEach(function (t) { vals[t.i][0] = fn(t); });
+      tk.getRange(RQA_T.first, th[RQA_TK[k]] + 1, vals.length, 1).setValues(vals);
+    };
+    col('status', function (t) { return t.newStatus; });
+    col('type', function (t) { return t.type; });
+    col('page', function (t) { return t.page; });
+    col('fixes', function (t) { return t.fixes.map(function (f) { return '#' + f.num; }).join(', '); });
+    col('cases', function (t) { return t.cases.map(function (c) { return c.id + (c.retired ? ' (retired)' : ''); }).join(', '); });
+    col('qa', rqaQaText_);
+    col('lastTested', function (t) { var m = ''; t.cases.forEach(function (c) { if (c.at && (!m || c.at > m)) m = c.at; }); return m; });
+  }
+}
+
+/** "2 pass · 1 fail: SET-003 (says Tier type deleted)" */
+function rqaQaText_(t) {
+  if (!t.cases.length) return 'No test case yet';
+  if (!t.active.length) return 'All test cases retired';
+  var n = { Pass: 0, Fail: 0, Blocked: 0, 'Not Implemented': 0, '': 0 };
+  t.active.forEach(function (c) { n[n.hasOwnProperty(c.result) ? c.result : '']++; });
+  var parts = [];
+  if (n.Pass) parts.push(n.Pass + ' pass');
+  if (n.Fail) parts.push(n.Fail + ' fail');
+  if (n.Blocked) parts.push(n.Blocked + ' blocked');
+  if (n['Not Implemented']) parts.push(n['Not Implemented'] + ' not on Vercel');
+  if (n['']) parts.push(n[''] + ' not run');
+  var fails = t.active.filter(function (c) { return c.result === 'Fail'; })
+    .map(function (c) { return c.id + (c.notes ? ' (' + c.notes.slice(0, 120) + ')' : ''); });
+  return parts.join(' · ') + (fails.length ? ': ' + fails.join('; ') : '');
+}
+
+// ================================================================ setup
+
+/** Builds or repairs every tab, header, dropdown, colour and dashboard. Never deletes data. */
 function rqaSetupSheet() {
   var ss = SpreadsheetApp.getActive();
   var st = rqaSetupSettings_(ss);
-  var tests = rqaSetupTests_(ss, st);
+  var tk = rqaSetupTickets_(ss, st);
+  var cs = rqaSetupCases_(ss, st);
   rqaSetupLog_(ss);
-  rqaSetupTickets_(ss, st);
-  rqaBuildDashboard_(ss, tests);
-  // Tab order and colours; drop the blank "Sheet1" a new spreadsheet starts with.
+  var L = rqaLetters_(tk, cs);
+  rqaBuildDashboard_(ss, L);
+  rqaBuildQaDashboard_(ss, L);
+  rqaBuildDevDashboard_(ss, L, st);
   RQA_ORDER.forEach(function (name, i) { ss.setActiveSheet(ss.getSheetByName(name)); ss.moveActiveSheet(i + 1); });
-  var colours = {}; colours[RQA_DASH] = RQA_NAVY; colours[RQA_TICKETS] = '#2f6fec'; colours[RQA_TESTS] = '#1e8e3e'; colours[RQA_LOG] = RQA_GREY; colours[RQA_SETTINGS] = '#9aa3b2';
-  RQA_ORDER.forEach(function (n) { ss.getSheetByName(n).setTabColor(colours[n]); });
+  var tabColours = ['#1f2a44', '#2f6fec', '#1e8e3e', '#b7791f', '#c62828', '#5f6b7a', '#9aa3b2'];
+  RQA_ORDER.forEach(function (n, i) { ss.getSheetByName(n).setTabColor(tabColours[i]); });
   var blank = ss.getSheetByName('Sheet1');
   if (blank && blank.getLastRow() === 0 && blank.getLastColumn() === 0) ss.deleteSheet(blank);
-  rqaRefreshDevTickets();
+  rqaRefresh();
   ss.setActiveSheet(ss.getSheetByName(RQA_DASH));
-  ss.toast('Dashboard, Dev Tickets, QA Tests, Check Log and Settings are ready.', 'RDC QA', 6);
+  ss.toast('All tabs are ready.', 'RDC QA', 5);
 }
 
 function rqaSetupSettings_(ss) {
   var st = rqaTab_(ss, RQA_SETTINGS);
-  var names = Object.keys(RQA_LISTS);
   if (st.getRange(1, 1).getValue() === '') {
-    st.getRange(1, 1, 1, names.length).setValues([names]);
-    names.forEach(function (n, i) { st.getRange(2, i + 1, RQA_LISTS[n].length, 1).setValues(RQA_LISTS[n].map(function (v) { return [v]; })); });
+    st.getRange(1, 1, 1, RQA_LIST_KEYS.length).setValues([RQA_LIST_KEYS]);
+    RQA_LIST_KEYS.forEach(function (n, i) { st.getRange(2, i + 1, RQA_LISTS[n].length, 1).setValues(RQA_LISTS[n].map(function (v) { return [v]; })); });
   }
   var have = st.getRange(1, RQA_SET_COL, Math.max(st.getLastRow(), 1), 1).getValues().map(function (r) { return r[0]; });
   RQA_DEFAULT_SETTINGS.forEach(function (pair) {
@@ -142,234 +352,304 @@ function rqaSetupSettings_(ss) {
     st.getRange(r, RQA_SET_COL, 1, 2).setValues([pair]);
     have[r - 1] = pair[0];
   });
-  st.getRange(1, 1, 1, names.length).setFontWeight('bold').setBackground(RQA_NAVY).setFontColor('#ffffff');
-  st.getRange(1, RQA_SET_COL, 1, 2).setFontWeight('bold').setBackground(RQA_NAVY).setFontColor('#ffffff');
-  st.setColumnWidths(1, names.length, 130);
-  st.setColumnWidth(RQA_SET_COL, 280); st.setColumnWidth(RQA_SET_COL + 1, 440);
+  rqaHeaderStyle_(st.getRange(1, 1, 1, RQA_LIST_KEYS.length));
+  rqaHeaderStyle_(st.getRange(1, RQA_SET_COL, 1, 2));
+  st.setColumnWidths(1, RQA_LIST_KEYS.length, 130);
+  st.setColumnWidth(RQA_SET_COL, 330); st.setColumnWidth(RQA_SET_COL + 1, 260);
   st.setFrozenRows(1);
-  st.getRange(1, RQA_SET_COL + 2).setValue('Edit the lists in columns A:E to change the dropdowns. Add new devs under "Dev".').setFontColor(RQA_GREY).setFontStyle('italic');
+  st.getRange(RQA_DEFAULT_SETTINGS.length + 3, RQA_SET_COL, 3, 1).setValues([
+    ['Lists in columns A:F feed the dropdowns. Add a dev under "Dev" with their Freedcamp name beside it.'],
+    ['Secrets (QA_TOKEN, Freedcamp key) are kept in the script, never here: use the RDC QA menu.'],
+    ['Ticket Status values are used by the scripts: rename them only together with the code.'],
+  ]).setFontColor(RQA_GREY).setFontStyle('italic');
   return st;
-}
-
-function rqaSetupTests_(ss, st) {
-  var t = rqaTab_(ss, RQA_TESTS);
-  rqaEnsureHeaders_(t, RQA_TEST_HEADERS);
-  t.setFrozenRows(1); t.setFrozenColumns(1);
-  var h = rqaHeaderIndex_(t);
-  var rows = Math.max(t.getMaxRows() - 1, 1);
-  t.getRange(2, h[RQA_COLS.ticket] + 1, rows, 1).setDataValidation(rqaListRule_(st, 'Ticket Status'));
-  t.getRange(2, h[RQA_COLS.kind] + 1, rows, 1).setDataValidation(rqaListRule_(st, 'Kind'));
-  t.getRange(2, h[RQA_COLS.role] + 1, rows, 1).setDataValidation(rqaListRule_(st, 'Role'));
-  t.getRange(2, h[RQA_COLS.devTicket] + 1, rows, 1).setNumberFormat('@');
-  t.getRange(1, h[RQA_COLS.devTicket] + 1).setNote('Ticket number(s) from the Dev Tickets tab, e.g. 12 or 12, 15.');
-  t.getRange(1, h[RQA_COLS.ticket] + 1).setNote('Cancelled = the checker never runs or updates this test. Active / On Hold = normal.');
-  t.getRange(1, h[RQA_COLS.reference] + 1).setNote('Data tests: the value seen on the original site. The checker compares Vercel with it.');
-  [['id', 90], ['module', 150], ['title', 320], ['kind', 95], ['role', 75], ['steps', 320], ['expected', 320], ['reference', 150], ['ticket', 110],
-    ['devTicket', 95], ['devTitle', 300], ['implemented', 110], ['latest', 120], ['checkedAt', 140], ['notes', 380], ['shot', 110], ['remarks', 220]]
-    .forEach(function (p) { t.setColumnWidth(h[RQA_COLS[p[0]]] + 1, p[1]); });
-  rqaHeaderStyle_(t.getRange(1, 1, 1, t.getLastColumn()));
-  t.setRowHeight(1, 42);
-  // People-owned columns get a gold header; checker-owned ones grey.
-  ['reference', 'ticket', 'devTicket', 'remarks'].forEach(function (k) { t.getRange(1, h[RQA_COLS[k]] + 1).setBackground(RQA_GOLD); });
-  ['devTitle', 'implemented', 'latest', 'checkedAt', 'notes', 'shot'].forEach(function (k) { t.getRange(1, h[RQA_COLS[k]] + 1).setBackground(RQA_GREY); });
-  t.getRange(2, 1, rows, t.getLastColumn()).setVerticalAlignment('top');
-  ['steps', 'expected', 'notes', 'devTitle', 'title'].forEach(function (k) { t.getRange(2, h[RQA_COLS[k]] + 1, rows, 1).setWrap(true); });
-  t.getRange(2, h[RQA_COLS.checkedAt] + 1, rows, 1).setNumberFormat('mmm d, yyyy h:mm am/pm');
-  var col = function (k) { return rqaLetter_(h[RQA_COLS[k]] + 1); };
-  var latest = t.getRange(2, h[RQA_COLS.latest] + 1, rows, 1), B = SpreadsheetApp.newConditionalFormatRule;
-  t.setConditionalFormatRules([
-    B().whenFormulaSatisfied('=$' + col('ticket') + '2="' + RQA_CANCELLED + '"').setBackground('#e0e0e0').setFontColor('#888888').setStrikethrough(true)
-      .setRanges([t.getRange(2, 1, rows, t.getLastColumn())]).build(),
-  ].concat(rqaResultRules_(latest)));
-  if (!t.getFilter()) t.getRange(1, 1, t.getMaxRows(), t.getLastColumn()).createFilter();
-  return { h: h, col: col };
-}
-
-function rqaSetupLog_(ss) {
-  var log = rqaTab_(ss, RQA_LOG);
-  rqaEnsureHeaders_(log, RQA_LOG_HEADERS);
-  log.setFrozenRows(1);
-  rqaHeaderStyle_(log.getRange(1, 1, 1, log.getLastColumn()));
-  var lh = rqaHeaderIndex_(log);
-  [['TC ID', 90], ['Dev Ticket', 95], ['Checker', 120], ['Checked At', 150], ['Environment', 100], ['Result', 120], ['Notes', 520], ['Screenshot', 120]]
-    .forEach(function (p) { if (lh[p[0]] != null) log.setColumnWidth(lh[p[0]] + 1, p[1]); });
-  var rows = Math.max(log.getMaxRows() - 1, 1);
-  log.getRange(2, lh['Checked At'] + 1, rows, 1).setNumberFormat('mmm d, yyyy h:mm am/pm');
-  log.getRange(2, lh['Notes'] + 1, rows, 1).setWrap(true);
-  log.getRange(2, 1, rows, log.getLastColumn()).setVerticalAlignment('top');
-  log.setConditionalFormatRules(rqaResultRules_(log.getRange(2, lh['Result'] + 1, rows, 1)));
 }
 
 function rqaSetupTickets_(ss, st) {
   var sh = rqaTab_(ss, RQA_TICKETS);
-  if (sh.getRange(3, 1).getValue() === '') {
+  var headers = RQA_TK_ORDER.map(function (k) { return RQA_TK[k]; });
+  if (sh.getRange(RQA_T.head, 1).getValue() === '') {
     var start = Number(rqaSetting_('First ticket number')) || 1;
     sh.getRange(1, 1).setValue('CURRENT USABLE TICKET:');
     sh.getRange(RQA_T.counter).setValue(start + ' | ');
     sh.getRange(2, 6).setValue('DO NOT TOUCH -->');
     sh.getRange(RQA_T.brain).setValue(start);
-    sh.getRange(3, 1, 1, RQA_TICKET_HEADERS.length).setValues([RQA_TICKET_HEADERS]);
   }
+  rqaEnsureHeaders_(sh, headers, RQA_T.head);
+  var h = rqaHeaders_(sh, RQA_T.head);
   sh.getRange(1, 1).setFontWeight('bold').setFontColor(RQA_NAVY);
   sh.getRange(RQA_T.counter).setFontWeight('bold').setFontSize(13).setBackground('#fff3cd')
-    .setNote('Clear this cell (Delete key) to log the next ticket. Then type the ticket after the "|" in the new row: "TYPE: Page - Sub-page - Task".');
+    .setNote('Clear this cell (Delete) to log the next ticket, then type its title after the "|" in the new row.');
   sh.getRange(2, 6, 1, 2).setFontColor(RQA_GREY).setFontStyle('italic');
-  sh.getRange(1, 3, 1, 8).merge().setValue('FORMAT:  12 | FEAT: Main page - Sub-page - Task      (types: FEAT, BUG, HOTFIX, UI, UIFIX, UX, REF, PERF, CHORE, DOC)')
+  sh.getRange(1, 3, 1, 9).merge().setValue('FORMAT:  12 | FEAT: Main page - Sub-page - Task     ·     Dev: Ready for QA when done     ·     Fix = make a fix ticket     ·     Freedcamp = send the task')
     .setFontColor(RQA_GREY).setFontStyle('italic');
-  rqaHeaderStyle_(sh.getRange(3, 1, 1, RQA_TICKET_HEADERS.length));
-  sh.getRange(3, RQA_TICKET_QA, 1, 5).setBackground(RQA_GREY);
-  sh.getRange(3, RQA_TICKET_QA).setNote('Filled by the checker from the QA Tests linked to this ticket (column "Dev Ticket" there).');
-  sh.setFrozenRows(3);
-  [420, 80, 85, 90, 130, 200, 55, 55, 150, 260].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  rqaHeaderStyle_(sh.getRange(RQA_T.head, 1, 1, sh.getLastColumn()));
+  RQA_TK_AUTO.forEach(function (k) { sh.getRange(RQA_T.head, h[RQA_TK[k]] + 1).setBackground(RQA_GREY); });
+  sh.getRange(RQA_T.head, h[RQA_TK.reworkedBy] + 1).setNote('Ticket number that reworked this feature (with Status = Reworked).');
+  sh.getRange(RQA_T.head, h[RQA_TK.fixOf] + 1).setNote('For a fix ticket: the failed ticket it fixes. Filled in by the Fix box.');
+  sh.getRange(RQA_T.head, h[RQA_TK.status] + 1).setNote('Dev sets In Dev / Ready for QA. Failed, Fixing, Ready for Re-test and Passed follow the test cases. Reworked / Closed stay as set.');
+  sh.setFrozenRows(RQA_T.head); sh.setFrozenColumns(1);
+  var widths = { ticket: 380, time: 70, date: 75, dev: 85, status: 120, desc: 240, fc: 85, fix: 45, fixOf: 60, reworkedBy: 85, fixes: 85,
+    type: 70, page: 170, cases: 160, qa: 300, lastTested: 130, readyAt: 130, notes: 220 };
+  Object.keys(widths).forEach(function (k) { sh.setColumnWidth(h[RQA_TK[k]] + 1, widths[k]); });
   var rows = Math.max(sh.getMaxRows() - RQA_T.first + 1, 1);
-  sh.getRange(RQA_T.first, 4, rows, 1).setDataValidation(rqaListRule_(st, 'Dev'));
-  sh.getRange(RQA_T.first, 1, rows, 1).setWrap(true);
-  sh.getRange(RQA_T.first, 3, rows, 1).setNumberFormat('mm/dd/yy');
-  sh.getRange(RQA_T.first, 9, rows, 1).setNumberFormat('mmm d, yyyy h:mm am/pm');
-  sh.getRange(RQA_T.first, 1, rows, RQA_TICKET_HEADERS.length).setVerticalAlignment('top');
-  var status = sh.getRange(RQA_T.first, RQA_TICKET_QA, rows, 1), B = SpreadsheetApp.newConditionalFormatRule;
-  sh.setConditionalFormatRules([
-    B().whenTextEqualTo('Verified').setBackground('#d4edda').setRanges([status]).build(),
-    B().whenTextEqualTo('Failing').setBackground('#f8d7da').setRanges([status]).build(),
-    B().whenTextEqualTo('Not on Vercel yet').setBackground('#d6d8f5').setRanges([status]).build(),
-    B().whenTextEqualTo('No QA test yet').setBackground('#fff3cd').setRanges([status]).build(),
-    B().whenTextEqualTo('Partly checked').setBackground('#e8eefc').setRanges([status]).build(),
-  ]);
+  var col = function (k) { return sh.getRange(RQA_T.first, h[RQA_TK[k]] + 1, rows, 1); };
+  col('dev').setDataValidation(rqaListRule_(st, 'Dev'));
+  col('status').setDataValidation(rqaListRule_(st, 'Ticket Status'));
+  // A Freedcamp cell turns into a link once sent, so its checkbox must accept that text.
+  col('fc').setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(true).build());
+  col('fix').insertCheckboxes();
+  col('fixOf').setNumberFormat('0'); col('reworkedBy').setNumberFormat('@');
+  col('date').setNumberFormat('mm/dd/yy');
+  col('lastTested').setNumberFormat('mmm d, h:mm am/pm'); col('readyAt').setNumberFormat('mmm d, h:mm am/pm');
+  ['ticket', 'desc', 'qa', 'cases', 'notes'].forEach(function (k) { col(k).setWrap(true); });
+  sh.getRange(RQA_T.first, 1, rows, sh.getLastColumn()).setVerticalAlignment('top');
+  var status = col('status'), B = SpreadsheetApp.newConditionalFormatRule;
+  sh.setConditionalFormatRules(Object.keys(RQA_STATUS_COLOURS).map(function (s) {
+    return B().whenTextEqualTo(s).setBackground(RQA_STATUS_COLOURS[s]).setRanges([status]).build();
+  }).concat([
+    B().whenFormulaSatisfied('=$' + rqaLetter_(h[RQA_TK.status] + 1) + RQA_T.first + '="' + RQA_S.closed + '"')
+      .setFontColor('#888888').setStrikethrough(true).setRanges([col('ticket')]).build(),
+  ]));
+  return { sh: sh, h: h };
 }
 
-/** The Dashboard is formulas over the other tabs, rebuilt on every Set up. */
-function rqaBuildDashboard_(ss, tests) {
-  var d = rqaTab_(ss, RQA_DASH);
+function rqaSetupCases_(ss, st) {
+  var t = rqaTab_(ss, RQA_CASES);
+  // Older layouts called the case status "Ticket Status"; rename it in place.
+  var old = rqaHeaders_(t, 1);
+  if (old['Ticket Status'] != null && old[RQA_TC.caseStatus] == null) t.getRange(1, old['Ticket Status'] + 1).setValue(RQA_TC.caseStatus);
+  rqaEnsureHeaders_(t, RQA_TC_ORDER.map(function (k) { return RQA_TC[k]; }), 1);
+  t.setFrozenRows(1); t.setFrozenColumns(2);
+  var h = rqaHeaders_(t, 1);
+  var rows = Math.max(t.getMaxRows() - 1, 1);
+  var col = function (k) { return t.getRange(2, h[RQA_TC[k]] + 1, rows, 1); };
+  col('caseStatus').setDataValidation(rqaListRule_(st, 'Case Status'));
+  col('kind').setDataValidation(rqaListRule_(st, 'Kind'));
+  col('result').setDataValidation(rqaListRule_(st, 'Result'));
+  col('devTicket').setNumberFormat('@'); col('reworkedBy').setNumberFormat('@');
+  col('checkedAt').setNumberFormat('mmm d, yyyy h:mm am/pm');
+  ['title', 'steps', 'expected', 'notes', 'devTitle'].forEach(function (k) { col(k).setWrap(true); });
+  t.getRange(2, 1, rows, t.getLastColumn()).setVerticalAlignment('top');
+  var widths = { id: 85, devTicket: 75, module: 140, title: 300, kind: 90, source: 70, steps: 280, expected: 280, reference: 130,
+    caseStatus: 100, reworkedBy: 85, result: 120, checkedAt: 140, testedBy: 100, notes: 320, shot: 100, devTitle: 260, implemented: 100, remarks: 200 };
+  Object.keys(widths).forEach(function (k) { t.setColumnWidth(h[RQA_TC[k]] + 1, widths[k]); });
+  rqaHeaderStyle_(t.getRange(1, 1, 1, t.getLastColumn()));
+  t.setRowHeight(1, 40);
+  ['devTicket', 'reference', 'caseStatus', 'reworkedBy', 'result', 'remarks'].forEach(function (k) { t.getRange(1, h[RQA_TC[k]] + 1).setBackground(RQA_GOLD); });
+  ['checkedAt', 'testedBy', 'shot', 'devTitle', 'implemented'].forEach(function (k) { t.getRange(1, h[RQA_TC[k]] + 1).setBackground(RQA_GREY); });
+  t.getRange(1, h[RQA_TC.devTicket] + 1).setNote('Ticket number(s) this case tests, e.g. 12 or 12, 15.');
+  t.getRange(1, h[RQA_TC.caseStatus] + 1).setNote('Active = tested. Reworked (put the ticket in Reworked By) or Closed (page discontinued) = no longer tested.');
+  t.getRange(1, h[RQA_TC.result] + 1).setNote('Pick the result after testing; time, tester and the Check Log fill themselves. The checker writes here too.');
+  t.getRange(1, h[RQA_TC.title] + 1).setNote('Manual case: type the test here on an empty row and it gets an ID (MAN-001...).');
+  var letter = function (k) { return rqaLetter_(h[RQA_TC[k]] + 1); };
+  var B = SpreadsheetApp.newConditionalFormatRule;
+  t.setConditionalFormatRules([
+    B().whenFormulaSatisfied('=OR($' + letter('caseStatus') + '2="Closed",$' + letter('caseStatus') + '2="Reworked")')
+      .setBackground('#eeeeee').setFontColor('#888888').setStrikethrough(true).setRanges([t.getRange(2, 1, rows, t.getLastColumn())]).build(),
+  ].concat(rqaResultRules_(col('result'))));
+  if (!t.getFilter()) t.getRange(1, 1, t.getMaxRows(), t.getLastColumn()).createFilter();
+  return { sh: t, h: h };
+}
+
+function rqaSetupLog_(ss) {
+  var log = rqaTab_(ss, RQA_LOG);
+  var h0 = rqaHeaders_(log, 1);
+  if (h0['Checker'] != null && h0['Tested By'] == null) log.getRange(1, h0['Checker'] + 1).setValue('Tested By');
+  rqaEnsureHeaders_(log, RQA_LOG_HEADERS, 1);
+  log.setFrozenRows(1);
+  rqaHeaderStyle_(log.getRange(1, 1, 1, log.getLastColumn()));
+  var h = rqaHeaders_(log, 1), rows = Math.max(log.getMaxRows() - 1, 1);
+  [['TC ID', 90], ['Dev Ticket', 80], ['Tested By', 110], ['Checked At', 150], ['Environment', 100], ['Result', 120], ['Notes', 520], ['Screenshot', 110]]
+    .forEach(function (p) { log.setColumnWidth(h[p[0]] + 1, p[1]); });
+  log.getRange(2, h['Checked At'] + 1, rows, 1).setNumberFormat('mmm d, yyyy h:mm am/pm');
+  log.getRange(2, h['Notes'] + 1, rows, 1).setWrap(true);
+  log.getRange(2, 1, rows, log.getLastColumn()).setVerticalAlignment('top');
+  log.setConditionalFormatRules(rqaResultRules_(log.getRange(2, h['Result'] + 1, rows, 1)));
+}
+
+// ================================================================ dashboards
+
+/** Whole-column references used by the dashboards' formulas. */
+function rqaLetters_(tk, cs) {
+  var T = {}, C = {};
+  Object.keys(RQA_TK).forEach(function (k) { var c = rqaLetter_(tk.h[RQA_TK[k]] + 1); T[k] = "'" + RQA_TICKETS + "'!" + c + RQA_T.first + ':' + c; });
+  Object.keys(RQA_TC).forEach(function (k) { var c = rqaLetter_(cs.h[RQA_TC[k]] + 1); C[k] = "'" + RQA_CASES + "'!" + c + '2:' + c; });
+  return { T: T, C: C, activeCases: C.id + ',"<>",' + C.caseStatus + ',"<>Closed",' + C.caseStatus + ',"<>Reworked"' };
+}
+
+function rqaDashStart_(ss, name, title, subtitle) {
+  var d = rqaTab_(ss, name);
   d.getCharts().forEach(function (c) { d.removeChart(c); });
   d.clear(); d.clearConditionalFormatRules();
+  d.getRange(1, 1, d.getMaxRows(), d.getMaxColumns()).clearDataValidations();
   d.setHiddenGridlines(true);
-  var T = function (k) { var c = tests.col(k); return "'" + RQA_TESTS + "'!" + c + '2:' + c; };
-  var TK = function (c) { return "'" + RQA_TICKETS + "'!" + c + RQA_T.first + ':' + c; };
-  var active = T('id') + ',"<>",' + T('ticket') + ',"<>' + RQA_CANCELLED + '"';
-  var res = function (r) { return '=COUNTIFS(' + active + ',' + T('latest') + ',"' + r + '")'; };
-  var tickets = TK('A') + ',"<>"';
+  d.getRange('A1:P1').merge().setValue(title).setFontSize(18).setFontWeight('bold').setFontColor('#ffffff').setBackground(RQA_NAVY);
+  d.setRowHeight(1, 42);
+  d.getRange('A2:P2').merge().setValue(subtitle).setFontColor(RQA_GREY).setFontStyle('italic');
+  d.setFrozenRows(2);
+  return d;
+}
 
-  d.setColumnWidths(1, 8, 112); d.setColumnWidth(9, 24); d.setColumnWidths(10, 5, 120);
-  d.getRange('A1:N1').merge().setValue('RDC8 IMS — QA & Dev Tickets').setFontSize(20).setFontWeight('bold').setFontColor('#ffffff').setBackground(RQA_NAVY);
-  d.setRowHeight(1, 46);
-  d.getRange('A2:N2').merge().setFormula('="Vercel: ' + rqaSetting_('App under test (Vercel)') + '   ·   Original: ' + rqaSetting_('Original site (reference only)') +
-    '   ·   Last check: "&IFERROR(TEXT(MAX(' + T('checkedAt') + '),"mmm d, yyyy h:mm am/pm"),"never")').setFontColor(RQA_GREY);
+/** A KPI card: small label over a big number. */
+function rqaCard_(d, row, col, label, formula, bg) {
+  d.getRange(row, col).setValue(label).setFontSize(9).setFontWeight('bold').setFontColor(RQA_GREY).setBackground(bg).setHorizontalAlignment('center').setWrap(true);
+  d.getRange(row + 1, col).setFormula(formula).setFontSize(22).setFontWeight('bold').setBackground(bg).setHorizontalAlignment('center');
+  d.setRowHeight(row + 1, 40);
+}
 
-  // KPI cards: label row, then value row.
-  var card = function (row, col, label, formula, bg, fmt) {
-    d.getRange(row, col).setValue(label).setFontSize(9).setFontWeight('bold').setFontColor(RQA_GREY).setBackground(bg).setHorizontalAlignment('center');
-    var v = d.getRange(row + 1, col).setFormula(formula).setFontSize(22).setFontWeight('bold').setBackground(bg).setHorizontalAlignment('center');
-    if (fmt) v.setNumberFormat(fmt);
-  };
-  d.getRange('A4').setValue('QA TESTS').setFontWeight('bold').setFontColor(RQA_NAVY);
-  card(5, 1, 'Active tests', '=COUNTIFS(' + active + ')', '#eef1f7');
-  card(5, 2, 'Pass', res('Pass'), '#d4edda');
-  card(5, 3, 'Fail', res('Fail'), '#f8d7da');
-  card(5, 4, 'Blocked', res('Blocked'), '#fff3cd');
-  card(5, 5, 'Not Implemented', res('Not Implemented'), '#d6d8f5');
-  card(5, 6, 'Not run yet', '=COUNTIFS(' + active + ',' + T('latest') + ',"")', '#eef1f7');
-  card(5, 7, 'Pass rate (run)', '=IFERROR(B6/(B6+C6),0)', '#eef1f7', '0%');
-  card(5, 8, 'Cancelled', '=COUNTIFS(' + T('ticket') + ',"' + RQA_CANCELLED + '")', '#e0e0e0');
+/** A titled list fed by one FILTER formula, with max rows reserved below it. */
+function rqaList_(d, row, col, title, headers, formula, max, empty, colour) {
+  d.getRange(row, col).setValue(title).setFontWeight('bold').setFontColor(colour || RQA_NAVY);
+  rqaHeaderStyle_(d.getRange(row + 1, col, 1, headers.length).setValues([headers]));
+  d.getRange(row + 2, col).setFormula('=IFERROR(ARRAY_CONSTRAIN(' + formula + ',' + max + ',' + headers.length + '),"' + empty + '")');
+  d.getRange(row + 2, col, max, headers.length).setWrap(true).setVerticalAlignment('top').setFontSize(9);
+}
 
-  d.getRange('A8').setValue('DEV TICKETS').setFontWeight('bold').setFontColor(RQA_NAVY);
-  var tq = function (s) { return '=COUNTIFS(' + tickets + ',' + TK('E') + ',"' + s + '")'; };
-  card(9, 1, 'Tickets logged', '=COUNTIFS(' + tickets + ')', '#eef1f7');
-  card(9, 2, 'Verified', tq('Verified'), '#d4edda');
-  card(9, 3, 'Failing', tq('Failing'), '#f8d7da');
-  card(9, 4, 'Not on Vercel yet', tq('Not on Vercel yet'), '#d6d8f5');
-  card(9, 5, 'Partly checked', tq('Partly checked'), '#e8eefc');
-  card(9, 6, 'Not run yet', tq('Not run yet'), '#eef1f7');
-  card(9, 7, 'No QA test yet', tq('No QA test yet'), '#fff3cd');
-  card(9, 8, 'Logged this week', '=COUNTIFS(' + tickets + ',' + TK('C') + ',">="&(TODAY()-WEEKDAY(TODAY(),3)))', '#eef1f7');
-  d.getRange('A5:H6').setBorder(true, true, true, true, true, false, '#ffffff', SpreadsheetApp.BorderStyle.SOLID_THICK);
-  d.getRange('A9:H10').setBorder(true, true, true, true, true, false, '#ffffff', SpreadsheetApp.BorderStyle.SOLID_THICK);
-  d.setRowHeights(6, 1, 40); d.setRowHeights(10, 1, 40);
+function rqaBuildDashboard_(ss, L) {
+  var T = L.T, C = L.C, A = L.activeCases;
+  var d = rqaDashStart_(ss, RQA_DASH, 'RDC8 IMS — QA & Dev Tickets',
+    'Vercel: ' + rqaSetting_('App under test (Vercel)') + '   ·   Original: ' + rqaSetting_('Original site (reference only)') + '   ·   QA work: QA Dashboard   ·   Dev work: Dev Dashboard');
+  d.setColumnWidths(1, 16, 96);
+  d.getRange('A4').setValue('TICKETS').setFontWeight('bold').setFontColor(RQA_NAVY);
+  var st = RQA_LISTS['Ticket Status'];
+  st.forEach(function (s, i) { rqaCard_(d, 5, i + 1, s, '=COUNTIF(' + T.status + ',"' + s + '")', RQA_STATUS_COLOURS[s]); });
+  rqaCard_(d, 5, st.length + 1, 'All tickets', '=COUNTA(' + T.ticket + ')', '#eef1f7');
+  rqaCard_(d, 5, st.length + 2, 'Logged this week', '=COUNTIFS(' + T.ticket + ',"<>",' + T.date + ',">="&(TODAY()-WEEKDAY(TODAY(),3)))', '#eef1f7');
 
-  // Results by module.
-  d.getRange('A12').setValue('RESULTS BY MODULE').setFontWeight('bold').setFontColor(RQA_NAVY);
-  d.getRange('A13:H13').setValues([['Module', 'Active', 'Pass', 'Fail', 'Blocked', 'Not Impl.', 'Not run', 'Pass %']]);
-  rqaHeaderStyle_(d.getRange('A13:H13'));
-  d.getRange('A14').setFormula('=IFERROR(SORT(UNIQUE(FILTER(' + T('module') + ',' + T('module') + '<>""))),"")');
-  var byMod = function (m, extra) { return '=IF(' + m + '="","",COUNTIFS(' + T('module') + ',' + m + ',' + active + (extra || '') + '))'; };
-  var formulas = [];
-  for (var r = 14; r <= 43; r++) {
-    var m = '$A' + r, lr = ',' + T('latest') + ',';
-    formulas.push([byMod(m), byMod(m, lr + '"Pass"'), byMod(m, lr + '"Fail"'), byMod(m, lr + '"Blocked"'), byMod(m, lr + '"Not Implemented"'),
-      byMod(m, lr + '""'), '=IF(' + m + '="","",IFERROR(C' + r + '/(C' + r + '+D' + r + '),""))']);
+  d.getRange('A8').setValue('TEST CASES').setFontWeight('bold').setFontColor(RQA_NAVY);
+  var res = function (r) { return '=COUNTIFS(' + A + ',' + C.result + ',"' + r + '")'; };
+  rqaCard_(d, 9, 1, 'Active cases', '=COUNTIFS(' + A + ')', '#eef1f7');
+  rqaCard_(d, 9, 2, 'Pass', res('Pass'), RQA_RESULT_COLOURS.Pass);
+  rqaCard_(d, 9, 3, 'Fail', res('Fail'), RQA_RESULT_COLOURS.Fail);
+  rqaCard_(d, 9, 4, 'Blocked', res('Blocked'), RQA_RESULT_COLOURS.Blocked);
+  rqaCard_(d, 9, 5, 'Not on Vercel', res('Not Implemented'), RQA_RESULT_COLOURS['Not Implemented']);
+  rqaCard_(d, 9, 6, 'Not run yet', '=COUNTIFS(' + A + ',' + C.result + ',"")', '#eef1f7');
+  rqaCard_(d, 9, 7, 'Pass rate', '=IFERROR(B10/(B10+C10),0)', '#eef1f7');
+  d.getRange('G10').setNumberFormat('0%');
+  rqaCard_(d, 9, 8, 'Manual cases', '=COUNTIFS(' + A + ',' + C.source + ',"Manual")', '#eef1f7');
+  rqaCard_(d, 9, 9, 'Automated', '=COUNTIFS(' + A + ',' + C.source + ',"Auto")', '#eef1f7');
+  rqaCard_(d, 9, 10, 'Retired', '=COUNTIF(' + C.caseStatus + ',"Closed")+COUNTIF(' + C.caseStatus + ',"Reworked")', '#e0e0e0');
+
+  // Tickets by dev (left) and results by module (right).
+  d.getRange('A12').setValue('TICKETS BY DEV').setFontWeight('bold').setFontColor(RQA_NAVY);
+  var devHead = ['Dev', 'Tickets', 'In Dev', 'Ready for QA', 'Failed / Fixing', 'Passed'];
+  rqaHeaderStyle_(d.getRange(13, 1, 1, devHead.length).setValues([devHead]));
+  d.getRange('A14').setFormula("=IFERROR(FILTER('" + RQA_SETTINGS + "'!" + rqaListLetter_('Dev') + '2:' + rqaListLetter_('Dev') + ",'" + RQA_SETTINGS + "'!" + rqaListLetter_('Dev') + '2:' + rqaListLetter_('Dev') + '<>""),"")');
+  var f = [];
+  for (var r = 14; r <= 23; r++) {
+    var dv = '$A' + r, by = function (s) { return 'COUNTIFS(' + T.dev + ',' + dv + ',' + T.status + ',"' + s + '")'; };
+    f.push(['=IF(' + dv + '="","",COUNTIF(' + T.dev + ',' + dv + '))', '=IF(' + dv + '="","",' + by(RQA_S.inDev) + ')', '=IF(' + dv + '="","",' + by(RQA_S.ready) + '+' + by(RQA_S.retest) + ')',
+      '=IF(' + dv + '="","",' + by(RQA_S.failed) + '+' + by(RQA_S.fixing) + ')', '=IF(' + dv + '="","",' + by(RQA_S.passed) + ')']);
   }
-  d.getRange(14, 2, 30, 7).setFormulas(formulas);
-  d.getRange('H14:H43').setNumberFormat('0%');
-  d.getRange('B14:H43').setHorizontalAlignment('center');
-  var modRows = d.getRange('A14:H43'), B = SpreadsheetApp.newConditionalFormatRule;
+  d.getRange(14, 2, 10, 5).setFormulas(f).setHorizontalAlignment('center');
+
+  d.getRange('H12').setValue('RESULTS BY MODULE').setFontWeight('bold').setFontColor(RQA_NAVY);
+  var modHead = ['Module', 'Active', 'Pass', 'Fail', 'Blocked', 'Not on Vercel', 'Not run', 'Pass %'];
+  rqaHeaderStyle_(d.getRange(13, 8, 1, modHead.length).setValues([modHead]));
+  d.getRange('H14').setFormula('=IFERROR(SORT(UNIQUE(FILTER(' + C.module + ',' + C.module + '<>""))),"")');
+  var mf = [];
+  for (var mr = 14; mr <= 43; mr++) {
+    var m = '$H' + mr, by2 = function (x) { return '=IF(' + m + '="","",COUNTIFS(' + C.module + ',' + m + ',' + A + (x ? ',' + C.result + ',' + x : '') + '))'; };
+    mf.push([by2(''), by2('"Pass"'), by2('"Fail"'), by2('"Blocked"'), by2('"Not Implemented"'), by2('""'), '=IF(' + m + '="","",IFERROR(J' + mr + '/(J' + mr + '+K' + mr + '),""))']);
+  }
+  d.getRange(14, 9, 30, 7).setFormulas(mf).setHorizontalAlignment('center');
+  d.getRange('O14:O43').setNumberFormat('0%');
+  d.setColumnWidth(8, 150);
+  var B = SpreadsheetApp.newConditionalFormatRule, rows = d.getRange('H14:O43');
   d.setConditionalFormatRules([
-    B().whenFormulaSatisfied('=AND($A14<>"",$D14>0)').setBackground('#fbe9eb').setRanges([modRows]).build(),
-    B().whenFormulaSatisfied('=AND($A14<>"",$B14>0,$C14=$B14)').setBackground('#e9f6ec').setRanges([modRows]).build(),
+    B().whenFormulaSatisfied('=AND($H14<>"",$K14>0)').setBackground('#fbe9eb').setRanges([rows]).build(),
+    B().whenFormulaSatisfied('=AND($H14<>"",$I14>0,$J14=$I14)').setBackground('#e9f6ec').setRanges([rows]).build(),
   ]);
 
-  // Right column: tickets by dev, then open failures.
-  d.getRange('J4').setValue('TICKETS BY DEV').setFontWeight('bold').setFontColor(RQA_NAVY);
-  d.getRange('J5:M5').setValues([['Dev', 'Tickets', 'Failing', 'Verified']]);
-  rqaHeaderStyle_(d.getRange('J5:M5'));
-  d.getRange('J6').setFormula("=IFERROR(FILTER('" + RQA_SETTINGS + "'!E2:E,'" + RQA_SETTINGS + "'!E2:E<>\"\"),\"\")");
-  var devF = [];
-  for (var dr = 6; dr <= 15; dr++) {
-    var dv = '$J' + dr;
-    devF.push(['=IF(' + dv + '="","",COUNTIFS(' + TK('D') + ',' + dv + '))', '=IF(' + dv + '="","",COUNTIFS(' + TK('D') + ',' + dv + ',' + TK('E') + ',"Failing"))',
-      '=IF(' + dv + '="","",COUNTIFS(' + TK('D') + ',' + dv + ',' + TK('E') + ',"Verified"))']);
-  }
-  d.getRange(6, 11, 10, 3).setFormulas(devF).setHorizontalAlignment('center');
-
-  d.getRange('J17').setValue('OPEN FAILURES').setFontWeight('bold').setFontColor('#c62828');
-  d.getRange('J18:N18').setValues([['TC ID', 'Test', 'Dev Ticket', 'Checked', 'Notes']]);
-  rqaHeaderStyle_(d.getRange('J18:N18'));
-  d.getRange('J19').setFormula('=IFERROR(ARRAY_CONSTRAIN(SORT(FILTER({' + [T('id'), T('title'), T('devTicket'), T('checkedAt'), T('notes')].join(',') + '},' +
-    T('latest') + '="Fail",' + T('ticket') + '<>"' + RQA_CANCELLED + '"),4,FALSE),25,5),"No failing tests")');
-  d.getRange('M19:M43').setNumberFormat('mmm d h:mm am/pm');
-  d.getRange('J19:N43').setWrap(true).setVerticalAlignment('top').setFontSize(9);
-
-  // Charts: overall results (pie) and results by module (stacked bars).
-  d.getRange('P5:Q5').setValues([['Result', 'Tests']]);
-  d.getRange('P6:Q10').setFormulas([['="Pass"', '=B6'], ['="Fail"', '=C6'], ['="Blocked"', '=D6'], ['="Not Implemented"', '=E6'], ['="Not run yet"', '=F6']]);
-  d.getRange('P5:Q10').setFontColor('#ffffff'); // chart data, kept out of sight
-  d.insertChart(d.newChart().setChartType(Charts.ChartType.PIE).addRange(d.getRange('P5:Q10'))
-    .setOption('title', 'All active tests').setOption('pieHole', 0.45).setOption('legend', { position: 'right' })
+  // Charts: ticket pipeline and test results.
+  d.insertChart(d.newChart().setChartType(Charts.ChartType.COLUMN).addRange(d.getRange(5, 1, 2, st.length))
+    .setTransposeRowsAndColumns(true).setOption('title', 'Tickets by status').setOption('legend', { position: 'none' })
+    .setOption('colors', ['#2f6fec']).setPosition(25, 1, 0, 0).setOption('width', 620).setOption('height', 300).build());
+  d.getRange('R5:S10').setValues([['Result', 'Cases'], ['Pass', ''], ['Fail', ''], ['Blocked', ''], ['Not on Vercel', ''], ['Not run yet', '']]);
+  d.getRange('S6:S10').setFormulas([['=B10'], ['=C10'], ['=D10'], ['=E10'], ['=F10']]);
+  d.getRange('R5:S10').setFontColor('#ffffff'); // chart data, kept out of sight
+  d.insertChart(d.newChart().setChartType(Charts.ChartType.PIE).addRange(d.getRange('R5:S10'))
+    .setOption('title', 'Active test cases').setOption('pieHole', 0.45)
     .setOption('colors', ['#1e8e3e', '#c62828', '#b7791f', '#5b5bd6', '#b0b7c3'])
-    .setPosition(45, 1, 0, 0).setOption('width', 440).setOption('height', 280).build());
-  d.insertChart(d.newChart().setChartType(Charts.ChartType.BAR).addRange(d.getRange('A13:A14')).addRange(d.getRange('C13:G14'))
-    .setOption('title', 'Results by module').setOption('isStacked', true).setOption('legend', { position: 'top' })
-    .setOption('colors', ['#1e8e3e', '#c62828', '#b7791f', '#5b5bd6', '#b0b7c3'])
-    .setPosition(45, 5, 0, 0).setOption('width', 700).setOption('height', 420).build());
-  d.setFrozenRows(2);
-  rqaFitModuleChart_();
+    .setPosition(45, 8, 0, 0).setOption('width', 480).setOption('height', 300).build());
 }
 
-/** The module chart covers exactly the modules listed, so it has no empty bars. Run after every refresh. */
-function rqaFitModuleChart_() {
-  var d = SpreadsheetApp.getActive().getSheetByName(RQA_DASH);
-  if (!d) return;
-  var n = d.getRange('A14:A43').getValues().filter(function (r) { return r[0] !== ''; }).length;
-  var last = 13 + Math.max(n, 1);
-  d.getCharts().forEach(function (c) {
-    if (c.getOptions().get('title') !== 'Results by module') return;
-    d.updateChart(c.modify().clearRanges().addRange(d.getRange('A13:A' + last)).addRange(d.getRange('C13:G' + last)).build());
+function rqaBuildQaDashboard_(ss, L) {
+  var T = L.T, C = L.C, A = L.activeCases;
+  var d = rqaDashStart_(ss, RQA_QA, 'QA Dashboard', 'What to test next. Test on the Test Cases tab: pick a Result per case and the ticket updates itself.');
+  d.setColumnWidths(1, 16, 105);
+  rqaCard_(d, 4, 1, 'Ready for Re-test', '=COUNTIF(' + T.status + ',"' + RQA_S.retest + '")', RQA_STATUS_COLOURS[RQA_S.retest]);
+  rqaCard_(d, 4, 2, 'Ready for QA', '=COUNTIF(' + T.status + ',"' + RQA_S.ready + '")', RQA_STATUS_COLOURS[RQA_S.ready]);
+  rqaCard_(d, 4, 3, 'Need test cases', '=COUNTIFS(' + T.status + ',"' + RQA_S.ready + '",' + T.qa + ',"No test case yet")+COUNTIFS(' + T.status + ',"' + RQA_S.inDev + '",' + T.qa + ',"No test case yet")', '#fff3cd');
+  rqaCard_(d, 4, 4, 'Cases not run', '=COUNTIFS(' + A + ',' + C.result + ',"")', '#eef1f7');
+  rqaCard_(d, 4, 5, 'Cases failing', '=COUNTIFS(' + A + ',' + C.result + ',"Fail")', RQA_RESULT_COLOURS.Fail);
+  rqaCard_(d, 4, 6, 'Cases blocked', '=COUNTIFS(' + A + ',' + C.result + ',"Blocked")', RQA_RESULT_COLOURS.Blocked);
+  var cols = function () { return Array.prototype.slice.call(arguments).join(','); };
+  rqaList_(d, 7, 1, 'READY FOR RE-TEST (dev fixed it)', ['Ticket', 'Dev', 'Fix Tickets', 'Test Cases', 'Last QA Result'],
+    'SORT(FILTER({' + cols(T.ticket, T.dev, T.fixes, T.cases, T.qa) + '},' + T.status + '="' + RQA_S.retest + '"),1,TRUE)', 20, 'Nothing to re-test', '#b7791f');
+  rqaList_(d, 7, 7, 'READY FOR QA (not tested yet)', ['Ticket', 'Dev', 'Ready Since', 'Test Cases', 'QA Result'],
+    'SORT(FILTER({' + cols(T.ticket, T.dev, T.readyAt, T.cases, T.qa) + '},' + T.status + '="' + RQA_S.ready + '"),3,TRUE)', 20, 'Nothing waiting', RQA_NAVY);
+  d.getRange(9, 9, 20, 1).setNumberFormat('mmm d, h:mm am/pm');
+  rqaList_(d, 30, 1, 'TICKETS WITHOUT A TEST CASE (add one on Test Cases)', ['Ticket', 'Dev', 'Status', 'Page'],
+    'SORT(FILTER({' + cols(T.ticket, T.dev, T.status, T.page) + '},' + T.qa + '="No test case yet",(' + T.status + '="' + RQA_S.ready + '")+(' + T.status + '="' + RQA_S.inDev + '")),1,TRUE)', 20, 'Every open ticket has a test case');
+  rqaList_(d, 30, 7, 'ACTIVE CASES NEVER RUN', ['TC ID', 'Dev Ticket', 'Test', 'Source'],
+    'FILTER({' + cols(C.id, C.devTicket, C.title, C.source) + '},' + C.id + '<>"",' + C.result + '="",' + C.caseStatus + '<>"Closed",' + C.caseStatus + '<>"Reworked")', 20, 'All active cases have a result');
+  d.setColumnWidth(1, 300); d.setColumnWidth(5, 260); d.setColumnWidth(7, 300); d.setColumnWidth(11, 260); d.setColumnWidth(9, 220);
+}
+
+function rqaBuildDevDashboard_(ss, L, st) {
+  var T = L.T;
+  var d = rqaDashStart_(ss, RQA_DEV, 'Dev Dashboard', 'Pick yourself in B4 to see only your tickets. Tick "Fix" on a failed ticket (Dev Tickets tab) to make its fix ticket.');
+  d.setColumnWidths(1, 16, 105);
+  d.getRange('A4').setValue('Dev:').setFontWeight('bold').setHorizontalAlignment('right');
+  var devs = rqaListValues_(st, 'Dev');
+  d.getRange('B4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['All'].concat(devs), true).build())
+    .setValue('All').setBackground('#fff3cd').setFontWeight('bold');
+  var mine = '((' + T.dev + '=$B$4)+($B$4="All"))';
+  var cnt = function (s) { return '=SUMPRODUCT((' + T.status + '="' + s + '")*' + mine + ')'; };
+  [RQA_S.failed, RQA_S.fixing, RQA_S.inDev, RQA_S.ready, RQA_S.retest, RQA_S.passed].forEach(function (s, i) {
+    rqaCard_(d, 5, i + 1, s, cnt(s), RQA_STATUS_COLOURS[s]);
   });
+  var cols = function () { return Array.prototype.slice.call(arguments).join(','); };
+  rqaList_(d, 8, 1, 'FAILED — make a fix ticket (tick Fix on the ticket)', ['Ticket', 'Dev', 'What failed', 'Fix Tickets'],
+    'SORT(FILTER({' + cols(T.ticket, T.dev, T.qa, T.fixes) + '},' + T.status + '="' + RQA_S.failed + '",' + mine + '),1,TRUE)', 15, 'No failed tickets', '#c62828');
+  rqaList_(d, 8, 7, 'IN PROGRESS (In Dev and Fixing)', ['Ticket', 'Dev', 'Status', 'Fix Of'],
+    'SORT(FILTER({' + cols(T.ticket, T.dev, T.status, T.fixOf) + '},((' + T.status + '="' + RQA_S.inDev + '")+(' + T.status + '="' + RQA_S.fixing + '")),' + mine + '),1,TRUE)', 15, 'Nothing in progress');
+
+  // Feature trail: every ticket that touched one page, oldest first.
+  d.getRange('A26').setValue('FEATURE TRAIL BY PAGE').setFontWeight('bold').setFontColor(RQA_NAVY);
+  d.getRange('A27').setValue('Page:').setFontWeight('bold').setHorizontalAlignment('right');
+  d.getRange('R1').setValue('Pages');
+  d.getRange('R2').setFormula('=IFERROR(SORT(UNIQUE(FILTER(' + T.page + ',' + T.page + '<>""))),"")');
+  d.getRange('R1:R300').setFontColor('#ffffff'); // dropdown source, kept out of sight
+  d.getRange('B27:D27').merge().setDataValidation(SpreadsheetApp.newDataValidation().requireValueInRange(d.getRange('R2:R300'), true).build())
+    .setBackground('#fff3cd').setFontWeight('bold');
+  rqaList_(d, 28, 1, '', ['#', 'Type', 'Ticket', 'Dev', 'Date', 'Status', 'Fix Of', 'Reworked By', 'QA Result'],
+    'ARRAYFORMULA(SORT(FILTER({IFERROR(VALUE(REGEXEXTRACT(' + T.ticket + '&"","^\\s*(\\d+)")),0),' + cols(T.type, T.ticket, T.dev, T.date, T.status, T.fixOf, T.reworkedBy, T.qa) + '},' +
+    T.page + '=$B$27,' + T.page + '<>""),1,TRUE))', 60, 'Pick a page in B27');
+  d.getRange(30, 5, 60, 1).setNumberFormat('mm/dd/yy');
+  d.setColumnWidth(1, 300); d.setColumnWidth(3, 300); d.setColumnWidth(7, 300); d.setColumnWidth(9, 260);
 }
 
-// ---------------------------------------------------------------- small helpers
+// ================================================================ small helpers
 
 function rqaTab_(ss, name) { return ss.getSheetByName(name) || ss.insertSheet(name); }
 
-function rqaEnsureHeaders_(sh, headers) {
-  var have = sh.getLastColumn() ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String) : [];
-  if (!have.filter(String).length) { sh.getRange(1, 1, 1, headers.length).setValues([headers]); return; }
+function rqaEnsureHeaders_(sh, headers, row) {
+  var width = sh.getLastColumn();
+  var have = width ? sh.getRange(row, 1, 1, width).getValues()[0].map(String) : [];
+  if (!have.filter(String).length) { sh.getRange(row, 1, 1, headers.length).setValues([headers]); return; }
   var missing = headers.filter(function (x) { return have.indexOf(x) < 0; });
-  if (missing.length) sh.getRange(1, have.length + 1, 1, missing.length).setValues([missing]);
+  var end = have.length;
+  while (end > 0 && have[end - 1] === '') end--;
+  if (missing.length) sh.getRange(row, end + 1, 1, missing.length).setValues([missing]);
 }
 
-function rqaHeaderIndex_(sh, row) {
-  var out = {}, r = row || 1;
+function rqaHeaders_(sh, row) {
+  var out = {};
   if (!sh.getLastColumn()) return out;
-  sh.getRange(r, 1, 1, sh.getLastColumn()).getValues()[0].forEach(function (v, i) { if (v) out[String(v)] = i; });
+  sh.getRange(row, 1, 1, sh.getLastColumn()).getValues()[0].forEach(function (v, i) { if (v !== '' && out[String(v)] == null) out[String(v)] = i; });
   return out;
 }
 
@@ -379,32 +659,20 @@ function rqaHeaderStyle_(range) {
 
 function rqaResultRules_(range) {
   var B = SpreadsheetApp.newConditionalFormatRule;
-  return [
-    B().whenTextEqualTo('Pass').setBackground('#d4edda').setRanges([range]).build(),
-    B().whenTextEqualTo('Fail').setBackground('#f8d7da').setRanges([range]).build(),
-    B().whenTextEqualTo('Blocked').setBackground('#fff3cd').setRanges([range]).build(),
-    B().whenTextEqualTo('Not Implemented').setBackground('#d6d8f5').setRanges([range]).build(),
-  ];
+  return Object.keys(RQA_RESULT_COLOURS).map(function (r) { return B().whenTextEqualTo(r).setBackground(RQA_RESULT_COLOURS[r]).setRanges([range]).build(); });
 }
 
 function rqaLetter_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+function rqaListLetter_(name) { return rqaLetter_(RQA_LIST_KEYS.indexOf(name) + 1); }
 
 function rqaListRule_(st, name) {
-  var c = rqaLetter_(st.getRange(1, 1, 1, 5).getValues()[0].indexOf(name) + 1);
+  var c = rqaListLetter_(name);
   return SpreadsheetApp.newDataValidation().requireValueInRange(st.getRange(c + '2:' + c), true).setAllowInvalid(false).build();
 }
 
-/** Menu: set Ticket Status on the selected QA Tests rows. */
-function rqaCancelSelected() { rqaSetTicket_(RQA_CANCELLED); }
-function rqaActivateSelected() { rqaSetTicket_('Active'); }
-function rqaSetTicket_(value) {
-  var sh = SpreadsheetApp.getActiveSheet();
-  if (sh.getName() !== RQA_TESTS) { SpreadsheetApp.getUi().alert('Select rows on the "' + RQA_TESTS + '" tab first.'); return; }
-  var c = rqaHeaderIndex_(sh)[RQA_COLS.ticket] + 1;
-  sh.getActiveRangeList().getRanges().forEach(function (r) {
-    var first = Math.max(r.getRow(), 2), n = r.getLastRow() - first + 1;
-    if (n > 0) sh.getRange(first, c, n, 1).setValue(value);
-  });
+function rqaListValues_(st, name) {
+  var c = RQA_LIST_KEYS.indexOf(name) + 1;
+  return st.getRange(2, c, Math.max(st.getLastRow() - 1, 1), 1).getValues().map(function (r) { return String(r[0]); }).filter(String);
 }
 
 function rqaSetting_(name) {
@@ -417,65 +685,29 @@ function rqaSetting_(name) {
   return '';
 }
 
-// ---------------------------------------------------------------- dev tickets <-> tests
-
-/** "12, 15" / "12 15" / "#12" -> ['12', '15'] */
-function rqaTicketNums_(v) { return String(v || '').split(/[^0-9]+/).filter(String); }
-
-/** Every logged ticket: { '12': { row, title } }. Rows look like "12 | FEAT: Page - Sub-page - Task". */
-function rqaReadDevTickets_() {
-  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS);
-  var out = {};
-  if (!sh || sh.getLastRow() < RQA_T.first) return out;
-  sh.getRange(RQA_T.first, 1, sh.getLastRow() - RQA_T.first + 1, 1).getDisplayValues().forEach(function (r, i) {
-    var m = String(r[0]).match(/^\s*(\d+)\s*\|\s*(.*)$/);
-    if (m) out[m[1]] = { row: RQA_T.first + i, title: m[2].trim() };
-  });
-  return out;
+function rqaAppendLog_(entries) {
+  var log = SpreadsheetApp.getActive().getSheetByName(RQA_LOG);
+  if (!log || !entries.length) return;
+  var h = rqaHeaders_(log, 1), start = log.getLastRow() + 1;
+  var put = function (name, fn) { if (h[name] != null) log.getRange(start, h[name] + 1, entries.length, 1).setValues(entries.map(function (x) { return [fn(x)]; })); };
+  put('TC ID', function (x) { return x.id; }); put('Dev Ticket', function (x) { return x.ticket; });
+  put('Tested By', function (x) { return x.who; }); put('Checked At', function (x) { return x.at; });
+  put('Environment', function (x) { return x.env; }); put('Result', function (x) { return x.result; });
+  put('Notes', function (x) { return x.notes; }); put('Screenshot', function (x) { return x.link; });
 }
 
-/**
- * Fills "Dev Ticket Title" on QA Tests and the QA columns (E..I) of every Dev Tickets row:
- * QA Status, Linked Tests, Pass, Fail, Last Checked. A ticket with no linked test says "No QA test yet".
- */
-function rqaRefreshDevTickets() {
-  var dev = rqaReadDevTickets_();
-  var T = rqaReadTests_();
-  var per = {};
-  var tc = T.h[RQA_COLS.devTitle];
-  if (tc != null && T.lastRow > 1) {
-    var cell = T.sh.getRange(2, tc + 1, T.lastRow - 1, 1);
-    var titles = cell.getValues();
-    T.rows.forEach(function (r) {
-      var nums = rqaTicketNums_(r.devTicket);
-      nums.forEach(function (n) { (per[n] = per[n] || []).push(r); });
-      titles[r.row - 2][0] = nums.map(function (n) { return dev[n] ? n + ' | ' + dev[n].title : n + ' | (not on the Dev Tickets tab)'; }).join('\n');
-    });
-    cell.setValues(titles);
-  }
-  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS);
-  var last = sh ? sh.getLastRow() : 0;
-  if (last < RQA_T.first) { rqaFitModuleChart_(); return 0; }
-  var out = [];
-  for (var row = RQA_T.first; row <= last; row++) out.push(['', '', '', '', '']);
-  Object.keys(dev).forEach(function (n) {
-    var tests = per[n] || [], act = tests.filter(function (r) { return !rqaIsCancelled_(r); });
-    var c = { Pass: 0, Fail: 0, Blocked: 0, 'Not Implemented': 0, '': 0 }, at = '';
-    act.forEach(function (r) { c[c.hasOwnProperty(r.latest) ? r.latest : '']++; if (r.checkedAt && (!at || r.checkedAt > at)) at = r.checkedAt; });
-    var status = !act.length ? 'No QA test yet'
-      : c.Fail ? 'Failing'
-      : c.Pass === act.length ? 'Verified'
-      : c['Not Implemented'] ? 'Not on Vercel yet'
-      : c[''] === act.length ? 'Not run yet' : 'Partly checked';
-    out[dev[n].row - RQA_T.first] = [status, tests.map(function (r) { return r.id; }).join(', '), act.length ? c.Pass : '', act.length ? c.Fail : '', at];
-  });
-  sh.getRange(RQA_T.first, RQA_TICKET_QA, out.length, 5).setValues(out);
-  SpreadsheetApp.flush();
-  rqaFitModuleChart_();
-  return Object.keys(dev).length;
+// ================================================================ checker token
+
+function rqaCreateToken() {
+  var ui = SpreadsheetApp.getUi();
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('QA_TOKEN') && ui.alert('A checker token already exists. Replace it? (The old one stops working.)', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  props.setProperty('QA_TOKEN', token);
+  ui.alert('Checker token', 'Put this in the checker Settings as SHEET_TOKEN (it is not shown again):\n\n' + token, ui.ButtonSet.OK);
 }
 
-// ---------------------------------------------------------------- web app
+// ================================================================ web app (automated checker)
 
 function rqaAuth_(token) {
   var want = PropertiesService.getScriptProperties().getProperty('QA_TOKEN');
@@ -487,32 +719,27 @@ function rqaGz_(obj) {
   return rqaJson_({ ok: true, gz: Utilities.base64Encode(gz.getBytes()) });
 }
 
-/** The QA Tests tab as objects, plus each row's sheet row number. */
-function rqaReadTests_() {
-  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TESTS);
-  if (!sh) throw new Error('No "' + RQA_TESTS + '" tab: run RDC QA > Set up / repair spreadsheet');
-  var h = rqaHeaderIndex_(sh);
-  var last = sh.getLastRow();
+function rqaReadCases_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_CASES);
+  if (!sh) throw new Error('No "' + RQA_CASES + '" tab: run RDC QA > Set up / repair spreadsheet');
+  var h = rqaHeaders_(sh, 1), last = sh.getLastRow();
   var vals = last > 1 ? sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues() : [];
-  var get = function (r, k) { return h[RQA_COLS[k]] == null ? '' : r[h[RQA_COLS[k]]]; };
+  var g = function (r, k) { return h[RQA_TC[k]] == null ? '' : r[h[RQA_TC[k]]]; };
   var rows = [];
   vals.forEach(function (r, i) {
-    var id = String(get(r, 'id')).trim();
+    var id = String(g(r, 'id')).trim();
     if (!id) return;
-    var at = get(r, 'checkedAt');
-    rows.push({ row: i + 2, id: id, module: get(r, 'module'), title: get(r, 'title'), kind: get(r, 'kind'), role: get(r, 'role'),
-      reference: get(r, 'reference'), ticketStatus: String(get(r, 'ticket') || 'Active'), devTicket: String(get(r, 'devTicket')),
-      latest: get(r, 'latest'), checkedAt: at instanceof Date ? at : '' });
+    rows.push({ row: i + 2, id: id, module: g(r, 'module'), title: g(r, 'title'), kind: g(r, 'kind'), source: g(r, 'source'),
+      reference: g(r, 'reference'), caseStatus: String(g(r, 'caseStatus') || 'Active'), devTicket: String(g(r, 'devTicket')), latest: g(r, 'result') });
   });
   return { sh: sh, h: h, rows: rows, lastRow: last };
 }
-function rqaIsCancelled_(r) { return /^cancel+ed$/i.test(String(r.ticketStatus).trim()); }
 
 function doGet(e) {
   try {
     rqaAuth_(e.parameter.token);
     if (e.parameter.action !== 'tests') throw new Error('Unknown action');
-    return rqaGz_({ rows: rqaReadTests_().rows.map(function (r) { delete r.row; delete r.checkedAt; return r; }) });
+    return rqaGz_({ rows: rqaReadCases_().rows.map(function (r) { delete r.row; r.ticketStatus = r.caseStatus; return r; }) });
   } catch (err) {
     return rqaJson_({ ok: false, error: String(err.message || err) });
   }
@@ -529,7 +756,7 @@ function doPost(e) {
     else if (body.action === 'sync') out = rqaSyncTests_(body.tests || [], body.update !== false);
     else throw new Error('Unknown action');
     SpreadsheetApp.flush();
-    try { rqaRefreshDevTickets(); } catch (err) { out.ticketRefreshError = String(err.message || err); }
+    try { rqaRefresh(); } catch (err) { out.refreshError = String(err.message || err); }
     return rqaJson_(out);
   } catch (err) {
     return rqaJson_({ ok: false, error: String(err.message || err) });
@@ -539,20 +766,15 @@ function doPost(e) {
 }
 
 function rqaWriteResults_(items) {
-  var ss = SpreadsheetApp.getActive();
-  var T = rqaReadTests_();
+  var C = rqaReadCases_();
   var byId = {};
-  T.rows.forEach(function (r) { byId[r.id] = r; });
-  var log = ss.getSheetByName(RQA_LOG);
-  if (!log) throw new Error('No "' + RQA_LOG + '" tab: run RDC QA > Set up / repair spreadsheet');
-  var lh = rqaHeaderIndex_(log);
-  var now = new Date();
-  var folder = null, out = [], skipped = [], unknown = [];
+  C.rows.forEach(function (r) { byId[r.id] = r; });
+  var now = new Date(), folder = null, out = [], skipped = [], unknown = [];
   items.forEach(function (it) {
     var row = byId[it.tcId];
     if (!row) { unknown.push(it.tcId); return; }
-    // The cancel rule: a cancelled test is never updated, whatever the checker sends.
-    if (rqaIsCancelled_(row)) { skipped.push(it.tcId); return; }
+    // Closed / Reworked cases are never updated, whatever the checker sends.
+    if (RQA_RETIRED.test(row.caseStatus.trim())) { skipped.push(it.tcId); return; }
     var link = '';
     if (it.screenshot && it.screenshot.base64) {
       if (!folder) {
@@ -564,57 +786,185 @@ function rqaWriteResults_(items) {
     }
     out.push({ it: it, row: row, link: link });
   });
-  if (out.length) {
-    var start = log.getLastRow() + 1;
-    var col = function (name, fn) { if (lh[name] != null) log.getRange(start, lh[name] + 1, out.length, 1).setValues(out.map(function (o) { return [fn(o)]; })); };
-    col('TC ID', function (o) { return o.it.tcId; });
-    col('Dev Ticket', function (o) { return o.row.devTicket; });
-    col('Checker', function (o) { return o.it.checker || 'RDC QA Bot'; });
-    col('Checked At', function () { return now; });
-    col('Environment', function (o) { return o.it.env || 'Vercel'; });
-    col('Result', function (o) { return o.it.result; });
-    col('Notes', function (o) { return o.it.notes || ''; });
-    col('Screenshot', function (o) { return o.link; });
-    out.forEach(function (o) {
-      var set = function (k, v) { if (T.h[RQA_COLS[k]] != null) T.sh.getRange(o.row.row, T.h[RQA_COLS[k]] + 1).setValue(v); };
-      set('latest', o.it.result); set('checkedAt', now); set('notes', o.it.notes || ''); set('shot', o.link);
-      // Blocked says nothing about the feature, so it leaves "Implemented on Vercel" as it was.
-      if (o.it.result !== 'Blocked') set('implemented', o.it.result === 'Not Implemented' ? 'No' : 'Yes');
-    });
-  }
+  rqaAppendLog_(out.map(function (o) {
+    return { id: o.it.tcId, ticket: o.row.devTicket, who: o.it.checker || 'RDC QA Bot', at: now, env: o.it.env || 'Vercel', result: o.it.result, notes: o.it.notes || '', link: o.link };
+  }));
+  out.forEach(function (o) {
+    var set = function (k, v) { if (C.h[RQA_TC[k]] != null) C.sh.getRange(o.row.row, C.h[RQA_TC[k]] + 1).setValue(v); };
+    set('result', o.it.result); set('checkedAt', now); set('testedBy', o.it.checker || 'RDC QA Bot');
+    set('notes', o.it.notes || ''); set('shot', o.link);
+    if (o.it.result !== 'Blocked') set('implemented', o.it.result === 'Not Implemented' ? 'No' : 'Yes');
+  });
   return { ok: true, written: out.length, skippedCancelled: skipped, unknown: unknown };
 }
 
 function rqaSyncTests_(tests, update) {
-  var T = rqaReadTests_();
+  var C = rqaReadCases_();
   var byId = {};
-  T.rows.forEach(function (r) { byId[r.id] = r; });
+  C.rows.forEach(function (r) { byId[r.id] = r; });
   var added = [], updated = [], skipped = [];
-  var owned = ['module', 'title', 'kind', 'role', 'steps', 'expected'];
-  var width = T.sh.getLastColumn(), newRows = [];
+  var owned = ['module', 'title', 'kind', 'steps', 'expected'];
+  var width = C.sh.getLastColumn(), newRows = [];
   tests.forEach(function (t) {
     var row = byId[t.id];
     if (!row) {
       var r = []; for (var i = 0; i < width; i++) r.push('');
-      var put = function (k, v) { if (T.h[RQA_COLS[k]] != null) r[T.h[RQA_COLS[k]]] = v; };
+      var put = function (k, v) { if (C.h[RQA_TC[k]] != null) r[C.h[RQA_TC[k]]] = v; };
       owned.forEach(function (k) { put(k, t[k] || ''); });
-      put('id', t.id); put('reference', t.reference || ''); put('ticket', 'Active');
+      put('id', t.id); put('source', 'Auto'); put('reference', t.reference || ''); put('caseStatus', 'Active');
       put('implemented', t.pending ? 'No' : '');
       newRows.push(r); added.push(t.id);
       return;
     }
-    if (rqaIsCancelled_(row)) { skipped.push(t.id); return; }
+    if (RQA_RETIRED.test(row.caseStatus.trim())) { skipped.push(t.id); return; }
     if (!update) return;
-    var cur = T.sh.getRange(row.row, 1, 1, width).getValues()[0];
-    var changed = false;
+    var cur = C.sh.getRange(row.row, 1, 1, width).getValues()[0], changed = false;
     owned.forEach(function (k) {
-      var c = T.h[RQA_COLS[k]];
-      if (c != null && String(cur[c]) !== String(t[k] || '')) { T.sh.getRange(row.row, c + 1).setValue(t[k] || ''); changed = true; }
+      var c = C.h[RQA_TC[k]];
+      if (c != null && String(cur[c]) !== String(t[k] || '')) { C.sh.getRange(row.row, c + 1).setValue(t[k] || ''); changed = true; }
     });
-    var rc = T.h[RQA_COLS.reference];
-    if (rc != null && t.reference && String(cur[rc]) === '') { T.sh.getRange(row.row, rc + 1).setValue(t.reference); changed = true; }
+    var rc = C.h[RQA_TC.reference];
+    if (rc != null && t.reference && String(cur[rc]) === '') { C.sh.getRange(row.row, rc + 1).setValue(t.reference); changed = true; }
     if (changed) updated.push(t.id);
   });
-  if (newRows.length) T.sh.getRange(T.lastRow + 1, 1, newRows.length, width).setValues(newRows);
+  if (newRows.length) C.sh.getRange(C.lastRow + 1, 1, newRows.length, width).setValues(newRows);
   return { ok: true, added: added, updated: updated, skippedCancelled: skipped };
+}
+
+// ================================================================ Freedcamp
+
+/** Menu: asks for the Freedcamp API key and secret, checks them, and turns on the Freedcamp triggers. */
+function rqaConnectFreedcamp() {
+  var ui = SpreadsheetApp.getUi();
+  var k = ui.prompt('Connect Freedcamp (1/2)', 'Freedcamp > My Account > API: create a SECURED key and paste the API KEY here.', ui.ButtonSet.OK_CANCEL);
+  if (k.getSelectedButton() !== ui.Button.OK || !k.getResponseText().trim()) return;
+  var s = ui.prompt('Connect Freedcamp (2/2)', 'Paste the API SECRET (shown on the same page after entering your password).', ui.ButtonSet.OK_CANCEL);
+  if (s.getSelectedButton() !== ui.Button.OK || !s.getResponseText().trim()) return;
+  var props = PropertiesService.getScriptProperties();
+  props.setProperties({ FREEDCAMP_API_KEY: k.getResponseText().trim(), FREEDCAMP_API_SECRET: s.getResponseText().trim() });
+  try {
+    var me = rqaFc_('get', 'users/current');
+    var user = (me.users || [me.user || me])[0] || {};
+    props.setProperty('FREEDCAMP_ME', String(user.id || ''));
+  } catch (err) {
+    props.deleteProperty('FREEDCAMP_API_KEY'); props.deleteProperty('FREEDCAMP_API_SECRET');
+    ui.alert('Freedcamp refused the key: ' + err.message);
+    return;
+  }
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (/^rqa(OnEditFreedcamp|SyncFreedcamp)$/.test(t.getHandlerFunction())) ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('rqaOnEditFreedcamp').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+  ScriptApp.newTrigger('rqaSyncFreedcamp').timeBased().everyMinutes(15).create();
+  ui.alert('Freedcamp connected. Tick a ticket\'s Freedcamp box to create its task.');
+}
+
+function rqaDisconnectFreedcamp() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (/^rqa(OnEditFreedcamp|SyncFreedcamp)$/.test(t.getHandlerFunction())) ScriptApp.deleteTrigger(t); });
+  ['FREEDCAMP_API_KEY', 'FREEDCAMP_API_SECRET', 'FREEDCAMP_ME', 'FREEDCAMP_SYNCED'].forEach(function (p) { PropertiesService.getScriptProperties().deleteProperty(p); });
+  SpreadsheetApp.getActive().toast('Freedcamp disconnected.', 'Freedcamp', 5);
+}
+
+function rqaFreedcampConnected_() { return !!PropertiesService.getScriptProperties().getProperty('FREEDCAMP_API_KEY'); }
+
+/** One Freedcamp API call with a secured key (HMAC-SHA1 of key + timestamp). Returns the response's data. */
+function rqaFc_(method, path, payload) {
+  var p = PropertiesService.getScriptProperties();
+  var key = p.getProperty('FREEDCAMP_API_KEY'), secret = p.getProperty('FREEDCAMP_API_SECRET');
+  if (!key || !secret) throw new Error('Freedcamp is not connected (RDC QA > Connect Freedcamp)');
+  var ts = String(Math.floor(Date.now() / 1000));
+  var hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, key + ts, secret)
+    .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+  var url = 'https://freedcamp.com/api/v1/' + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(key) + '&timestamp=' + ts + '&hash=' + hash;
+  var opts = { method: method, muteHttpExceptions: true };
+  if (payload) { opts.contentType = 'application/json'; opts.payload = JSON.stringify(payload); }
+  var res = UrlFetchApp.fetch(url, opts);
+  var body = {};
+  try { body = JSON.parse(res.getContentText()); } catch (_) {}
+  if (res.getResponseCode() >= 300 || (body.http_code && body.http_code >= 300)) throw new Error('Freedcamp ' + res.getResponseCode() + ': ' + (body.msg || res.getContentText().slice(0, 150)));
+  return body.data || {};
+}
+
+/** Freedcamp user ids by display name ("Meldz A." matches first name Meldz, last name starting with A). Cached 6 h. */
+function rqaFcUserId_(name) {
+  if (!name) return null;
+  var cache = CacheService.getScriptCache(), users = JSON.parse(cache.get('fcUsers') || 'null');
+  if (!users) {
+    var d = rqaFc_('get', 'users');
+    users = (d.users || []).map(function (u) { return { id: u.id, first: String(u.first_name || ''), last: String(u.last_name || ''), full: String(u.full_name || '') }; });
+    cache.put('fcUsers', JSON.stringify(users), 21600);
+  }
+  var want = String(name).trim().toLowerCase().replace(/\.$/, '');
+  var parts = want.split(/\s+/), lastInitial = parts.length > 1 ? parts[parts.length - 1] : '', first = parts.slice(0, Math.max(parts.length - 1, 1)).join(' ');
+  var hit = users.filter(function (u) {
+    var full = (u.full || (u.first + ' ' + u.last)).toLowerCase();
+    if (full === want) return true;
+    return u.first.toLowerCase().indexOf(first) === 0 && (!lastInitial || u.last.toLowerCase().indexOf(lastInitial) === 0);
+  })[0];
+  return hit ? hit.id : null;
+}
+
+/** Installable onEdit (runs as the person who connected Freedcamp, so it may call Freedcamp). */
+function rqaOnEditFreedcamp(e) {
+  if (!e || !e.range || e.range.getSheet().getName() !== RQA_TICKETS || e.value !== 'TRUE' || e.range.getRow() < RQA_T.first) return;
+  var sh = e.range.getSheet(), h = rqaHeaders_(sh, RQA_T.head), r = e.range.getRow();
+  if (e.range.getColumn() !== h[RQA_TK.fc] + 1) return;
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    var cell = sh.getRange(r, h[RQA_TK.fc] + 1);
+    var g = function (k) { return sh.getRange(r, h[RQA_TK[k]] + 1); };
+    var title = g('ticket').getDisplayValue().trim();
+    if (!rqaParseTicket_(title)) { cell.setValue(false); return SpreadsheetApp.getActive().toast('Type the ticket title first.', 'Freedcamp', 5); }
+    var task = rqaCreateFreedcampTask_(title, String(g('desc').getValue() || ''), String(g('dev').getValue() || ''));
+    cell.clearDataValidations();
+    cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
+    SpreadsheetApp.getActive().toast('Freedcamp task created for ' + title.split('|')[0].trim() + '.', 'Freedcamp', 5);
+  } catch (err) {
+    sh.getRange(r, h[RQA_TK.fc] + 1).setValue(false);
+    SpreadsheetApp.getActive().toast(String(err.message || err), 'Freedcamp failed', 10);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * The team's fixed recipe: assigned to the ticket's dev (or whoever connected Freedcamp), In Progress,
+ * start and due date today, priority High, followers from Settings (Meldz A.).
+ */
+function rqaCreateFreedcampTask_(title, description, dev) {
+  var project = rqaSetting_('Freedcamp project ID');
+  var today = Utilities.formatDate(new Date(), RQA_TZ, 'yyyy-MM-dd');
+  var st = SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS);
+  var devs = rqaListValues_(st, 'Dev'), names = st.getRange(2, RQA_LIST_KEYS.indexOf('Freedcamp Name') + 1, Math.max(devs.length, 1), 1).getValues();
+  var fcName = dev && devs.indexOf(dev) >= 0 ? String(names[devs.indexOf(dev)][0] || '') : '';
+  var assignee = rqaFcUserId_(fcName) || PropertiesService.getScriptProperties().getProperty('FREEDCAMP_ME') || 0;
+  var desc = (description ? description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>') + '<br><br>' : '') +
+    'Sheet ticket: ' + title.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  var data = rqaFc_('post', 'tasks', { title: title, description: desc, project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3,
+    assigned_to_id: assignee, start_date: today, due_date: today });
+  var task = (data.tasks || [])[0] || {};
+  if (!task.id) throw new Error('Freedcamp did not return the new task');
+  rqaFc_('post', 'tasks/' + task.id, { status: 2 });
+  var followers = rqaSetting_('Freedcamp followers').split(',').map(function (n) { return rqaFcUserId_(n.trim()); }).filter(Boolean);
+  if (followers.length) rqaFc_('post', 'tasks/batch', { batch_ids: [task.id], followers_operation: 'subscribe', follower_ids: followers });
+  return { id: task.id, url: task.url || ('https://freedcamp.com/view/' + project + '/tasks/' + task.id) };
+}
+
+/** Every 15 min: tickets that became Passed or Closed get their Freedcamp task marked complete (once). */
+function rqaSyncFreedcamp() {
+  if (!/^y/i.test(rqaSetting_('Freedcamp: complete task when ticket Passed/Closed'))) return;
+  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS);
+  if (!sh) return;
+  var h = rqaHeaders_(sh, RQA_T.head), n = rqaLastTicketRow_(sh, h) - RQA_T.first + 1;
+  if (n < 1) return;
+  var links = sh.getRange(RQA_T.first, h[RQA_TK.fc] + 1, n, 1).getRichTextValues();
+  var status = sh.getRange(RQA_T.first, h[RQA_TK.status] + 1, n, 1).getValues();
+  var props = PropertiesService.getScriptProperties(), done = JSON.parse(props.getProperty('FREEDCAMP_SYNCED') || '{}');
+  links.forEach(function (row, i) {
+    var url = row[0] && row[0].getLinkUrl(), m = url && url.match(/tasks\/(\d+)/);
+    if (!m) return;
+    var finished = status[i][0] === RQA_S.passed || status[i][0] === RQA_S.closed;
+    if (finished && !done[m[1]]) { try { rqaFc_('post', 'tasks/' + m[1], { status: 1 }); done[m[1]] = 1; } catch (_) {} }
+    if (!finished && done[m[1]]) { try { rqaFc_('post', 'tasks/' + m[1], { status: 2 }); delete done[m[1]]; } catch (_) {} }
+  });
+  props.setProperty('FREEDCAMP_SYNCED', JSON.stringify(done));
 }

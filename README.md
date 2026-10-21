@@ -22,31 +22,21 @@ Each test ends as **Pass**, **Fail**, **Blocked** (could not run: no account, no
 write tests off) or **Not Implemented** (Pending test and the page still says "coming soon").
 When a pending page gets built, its test starts reporting Pass / Fail by itself.
 
-## Cancelled tickets
+## The spreadsheet and the team flow
 
-Set a row's **Ticket Status** to **Cancelled** in the sheet (or select rows, then menu
-*RDC QA > Cancel selected tests*). From then on:
+RDC has its own spreadsheet, **RDC8 IMS - QA & Dev Tickets**: **Dashboard**, **Dev Tickets**, **Test Cases**,
+**QA Dashboard**, **Dev Dashboard**, **Check Log**, **Settings**.
 
-- the checker does not run it (`Skipped (ticket Cancelled)` in the log),
-- the sheet refuses any result for it, even from an old copy of the checker,
-- *Sync* never rewrites it, and the row is greyed out and left out of the Dashboard counts.
+- Devs log tickets on **Dev Tickets** (clear A2), tick **Freedcamp** to create the task, and set **Ready for QA**.
+- QA writes cases on **Test Cases** (manual ones get `MAN-` IDs; the checker's are `Auto`), links them with
+  **Dev Ticket**, and picks a **Result**. A failing case makes the ticket **Failed**; the dev ticks **Fix** to make a
+  fix ticket; when that is Ready for QA the ticket shows up as **Ready for Re-test**.
+- Tickets and cases can each be **Reworked** (with the ticket that reworked them) or **Closed** (page
+  discontinued). Closed / Reworked cases are skipped by the checker and refused by the sheet.
 
-Set it back to **Active** to resume.
-
-## The spreadsheet
-
-RDC has its own spreadsheet, **RDC8 IMS - QA & Dev Tickets**, with these tabs in order:
-**Dashboard**, **Dev Tickets**, **QA Tests**, **Check Log**, **Settings**. Details: [docs/SHEET-SETUP.md](docs/SHEET-SETUP.md).
-
-## Dev tickets
-
-- Devs log RDC tickets on **Dev Tickets** the same way as the team's ticket tab: clear **A2** to get the
-  next number, then type `TYPE: Page - Sub-page - Task` after the `|`.
-- QA puts the ticket number(s) a test covers in that test's **Dev Ticket** cell on **QA Tests** (`12` or `12, 15`).
-- Each ticket's **QA Status** fills itself: *Verified* (every active test passes), *Failing*, *Not on Vercel yet*,
-  *Partly checked*, *Not run yet* or *No QA test yet*. The Dashboard counts them per status and per dev.
-- When a dev finishes a ticket, run only its tests: UI field *Only tests for dev ticket(s)*, or
-  `npm run qa -- --ticket 12 --push`.
+The full flow, every click, Freedcamp and recommendations: **[docs/WORKFLOW.md](docs/WORKFLOW.md)**.
+Setup: **[docs/SHEET-SETUP.md](docs/SHEET-SETUP.md)**. When a ticket is Ready for QA, run its automated cases with
+`npm run qa -- --ticket 12 --push` (or the UI field *Only tests for dev ticket(s)*).
 
 ## Quick start (Windows)
 
@@ -93,7 +83,7 @@ row gets into the sheet.
 | `src/tests/_helpers.js` | Helpers shared by tests (files starting with `_` are not tests) |
 | `src/harness.js` | The `t` object tests receive, and the four results |
 | `src/app.js` | Everything the checker knows about the app's screens (sign-in, menus, tables) |
-| `src/run.js` | Runner: picks tests, skips Cancelled tickets, signs in per account, pushes results |
+| `src/run.js` | Runner: picks tests, skips Closed / Reworked cases, signs in per account, pushes results |
 | `src/sheet.js`, `src/sync.js` | Sheet web app client; sync tests into the sheet |
 | `apps-script/RdcCheckerApi.gs` | Google Apps Script for the sheet (API + setup menu) |
 | `docs/FINDINGS.md` | Differences found so far between the original and Vercel |

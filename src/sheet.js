@@ -54,7 +54,7 @@ function explainHtml(text, res) {
 
 /**
  * Test rows from the sheet's "QA Tests" tab, by TC ID:
- * { id, ticketStatus, devTicket, reference, latest, ... }. Cached so a Google hiccup doesn't stop a run.
+ * { id, caseStatus, devTicket, reference, latest, ... }. Cached so a Google hiccup doesn't stop a run.
  */
 const CACHE = path.join(ROOT, 'results', 'sheet-cache.json');
 export async function loadSheetRows() {
@@ -71,9 +71,10 @@ export async function loadSheetRows() {
   }
 }
 
-export const isCancelled = row => /^cancel+ed$/i.test(String(row?.ticketStatus || '').trim());
+/** Closed or Reworked test cases are no longer tested ("Cancelled" is the old name for Closed). */
+export const isRetired = row => /^(closed|reworked|cancel+ed)$/i.test(String(row?.caseStatus ?? row?.ticketStatus ?? '').trim());
 
-/** Append results to the Check Log and update each test's latest result. Cancelled tickets are refused by the sheet too. */
+/** Append results to the Check Log and update each test's latest result. Closed / Reworked cases are refused by the sheet too. */
 export async function pushResults(results) {
   let written = 0, skipped = [];
   for (let i = 0; i < results.length; i += 40) {

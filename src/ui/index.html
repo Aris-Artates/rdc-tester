@@ -76,7 +76,7 @@
     <label><input type="checkbox" id="push" checked> Write results to the sheet</label>
     <label><input type="checkbox" id="headed"> Show the browser</label>
     <label>Screenshots <select id="shots"><option value="fail">on Fail</option><option value="all">all</option><option value="none">none</option></select></label>
-    <p class="muted">Tickets set to <b>Cancelled</b> in the sheet are always skipped and never written.</p>
+    <p class="muted">Test cases set to <b>Closed</b> or <b>Reworked</b> in the sheet are always skipped and never written.</p>
     <div class="row">
       <button class="btn primary" id="go">Run</button>
       <button class="btn" id="dry">Dry run (list only)</button>
@@ -110,8 +110,8 @@
       <a class="btn" id="openSheet" target="_blank" rel="noopener">Open the sheet</a>
     </div>
     <p class="muted"><b>Sync</b> adds tests that are in the code but not in the sheet (as Active) and refreshes their descriptions.
-      It never changes Ticket Status, Reference (original), Remarks or any Cancelled row.<br>
-      Tabs: Dashboard, Dev Tickets, QA Tests, Check Log, Settings in the <b>RDC8 IMS - QA &amp; Dev Tickets</b> spreadsheet (see docs/SHEET-SETUP.md).</p>
+      It never changes Case Status, Dev Ticket, Reference (original), Result, Remarks or any Closed / Reworked case.<br>
+      Tabs: Dashboard, Dev Tickets, Test Cases, QA Dashboard, Dev Dashboard, Check Log, Settings in the <b>RDC8 IMS - QA &amp; Dev Tickets</b> spreadsheet (see docs/WORKFLOW.md).</p>
   </div>
 </section>
 
@@ -137,10 +137,10 @@
       <li><b>Settings</b>: fill the sheet web app URL and token, the admin account and a limited member account. Save.</li>
       <li><b>Sheet &gt; Sync tests to the sheet</b> once, so every test has a row.</li>
       <li><b>Run tests</b>: pick modules / kinds, keep "Write results to the sheet" on, click <b>Run</b>.</li>
-      <li>In the spreadsheet, the <b>Dashboard</b> shows the totals; <b>QA Tests</b> has <b>Latest Result</b> and <b>Last Notes</b> per test; <b>Dev Tickets</b> has each ticket's <b>QA Status</b>.</li>
-      <li>Dev tickets: type the ticket number(s) from the <b>Dev Tickets</b> tab in a test's <b>Dev Ticket</b> column on <b>QA Tests</b>. When a ticket is done, put its number in "Only tests for dev ticket(s)" and Run.</li>
+      <li>In the spreadsheet: <b>Dashboard</b> for totals, <b>QA Dashboard</b> for what to test next, <b>Dev Dashboard</b> for failed tickets; <b>Test Cases</b> has the <b>Result</b> and <b>Notes</b> per case.</li>
+      <li>Dev tickets: type the ticket number(s) in a case's <b>Dev Ticket</b> column on <b>Test Cases</b>. When a ticket is Ready for QA, put its number in "Only tests for dev ticket(s)" and Run.</li>
       <li><b>Data</b> tests need the value from the original site in <b>Reference (original)</b>. Until then they are Blocked and their notes show the Vercel value.</li>
-      <li>To stop testing a ticket, set its <b>Ticket Status</b> to <b>Cancelled</b> (or select rows &gt; menu <i>RDC Checker &gt; Cancel selected tickets</i>). Set it back to Active to resume.</li>
+      <li>To stop testing a case, set its <b>Case Status</b> to <b>Closed</b> (page discontinued) or <b>Reworked</b> (put the reworking ticket in <b>Reworked By</b>). Set it back to Active to resume.</li>
       <li>Results: <b>Pass</b>, <b>Fail</b>, <b>Blocked</b> (could not run), <b>Not Implemented</b> (on the original, not on Vercel yet).</li>
     </ol>
     <p>Adding a test: see <code>docs/ADDING-A-TEST.md</code> in this folder.</p>
@@ -211,7 +211,7 @@ async function start(kind, args, title) {
     if (summary?.kind === 'run') {
       const c = summary.counts;
       $('#stats').innerHTML = [['Pass', 's-pass'], ['Fail', 's-fail'], ['Blocked', 's-blocked'], ['Not Implemented', 's-ni']].map(([k, cls]) => `<div class="stat ${cls}"><b>${c[k] || 0}</b>${k}</div>`).join('');
-      $('#resultInfo').textContent = `CSV: ${summary.csv}. Written to sheet: ${summary.pushed}.` + (summary.cancelled?.length ? ` Skipped as Cancelled: ${summary.cancelled.join(', ')}.` : '');
+      $('#resultInfo').textContent = `CSV: ${summary.csv}. Written to sheet: ${summary.pushed}.` + (summary.cancelled?.length ? ` Skipped as Closed / Reworked: ${summary.cancelled.join(', ')}.` : '');
       $('#resultCard').style.display = '';
     }
   });
