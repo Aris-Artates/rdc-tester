@@ -90,6 +90,7 @@ function onOpen() {
     .addItem('Refresh statuses', 'rqaRefresh')
     .addSeparator()
     .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
+    .addItem('Fix Freedcamp assignee & followers (selected tickets)', 'rqaFixFreedcampPeople')
     .addItem('Disconnect Freedcamp', 'rqaDisconnectFreedcamp')
     .addItem('Create checker token…', 'rqaCreateToken')
     .addToUi();
@@ -843,9 +844,8 @@ function rqaConnectFreedcamp() {
   var props = PropertiesService.getScriptProperties();
   props.setProperties({ FREEDCAMP_API_KEY: k.getResponseText().trim(), FREEDCAMP_API_SECRET: s.getResponseText().trim() });
   try {
-    var me = rqaFc_('get', 'users/current');
-    var user = (me.users || [me.user || me])[0] || {};
-    props.setProperty('FREEDCAMP_ME', String(user.id || ''));
+    props.deleteProperty('FREEDCAMP_ME');
+    rqaFcMe_();
   } catch (err) {
     props.deleteProperty('FREEDCAMP_API_KEY'); props.deleteProperty('FREEDCAMP_API_SECRET');
     ui.alert('Freedcamp refused the key: ' + err.message);
@@ -886,11 +886,15 @@ function rqaFc_(method, path, payload) {
 /** Freedcamp user ids by display name ("Meldz A." matches first name Meldz, last name starting with A). Cached 6 h. */
 function rqaFcUserId_(name) {
   if (!name) return null;
-  var cache = CacheService.getScriptCache(), users = JSON.parse(cache.get('fcUsers') || 'null');
+  // Freedcamp's user objects carry "user_id" (not "id"). The cache key changed with that fix,
+  // so a list cached without ids is never reused.
+  var cache = CacheService.getScriptCache(), users = JSON.parse(cache.get('fcUsers2') || 'null');
   if (!users) {
     var d = rqaFc_('get', 'users');
-    users = (d.users || []).map(function (u) { return { id: u.id, first: String(u.first_name || ''), last: String(u.last_name || ''), full: String(u.full_name || '') }; });
-    cache.put('fcUsers', JSON.stringify(users), 21600);
+    users = (d.users || []).map(function (u) { return { id: u.user_id || u.id, first: String(u.first_name || ''), last: String(u.last_name || ''), full: String(u.full_name || '') }; })
+      .filter(function (u) { return u.id; });
+    if (!users.length) throw new Error('Freedcamp returned no users with an id');
+    cache.put('fcUsers2', JSON.stringify(users), 21600);
   }
   var want = String(name).trim().toLowerCase().replace(/\.$/, '');
   var parts = want.split(/\s+/), lastInitial = parts.length > 1 ? parts[parts.length - 1] : '', first = parts.slice(0, Math.max(parts.length - 1, 1)).join(' ');
@@ -917,7 +921,8 @@ function rqaOnEditFreedcamp(e) {
     var task = rqaCreateFreedcampTask_(title, String(g('desc').getValue() || ''), String(g('dev').getValue() || ''));
     cell.clearDataValidations();
     cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
-    SpreadsheetApp.getActive().toast('Freedcamp task created for ' + title.split('|')[0].trim() + '.', 'Freedcamp', 5);
+    SpreadsheetApp.getActive().toast('Freedcamp task created for ticket ' + title.split('|')[0].trim() + '.' +
+      (task.warnings.length ? ' Check: ' + task.warnings.join('; ') + '.' : ''), 'Freedcamp', task.warnings.length ? 12 : 5);
   } catch (err) {
     sh.getRange(r, h[RQA_TK.fc] + 1).setValue(false);
     SpreadsheetApp.getActive().toast(String(err.message || err), 'Freedcamp failed', 10);
@@ -933,20 +938,67 @@ function rqaOnEditFreedcamp(e) {
 function rqaCreateFreedcampTask_(title, description, dev) {
   var project = rqaSetting_('Freedcamp project ID');
   var today = Utilities.formatDate(new Date(), RQA_TZ, 'yyyy-MM-dd');
-  var st = SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS);
-  var devs = rqaListValues_(st, 'Dev'), names = st.getRange(2, RQA_LIST_KEYS.indexOf('Freedcamp Name') + 1, Math.max(devs.length, 1), 1).getValues();
-  var fcName = dev && devs.indexOf(dev) >= 0 ? String(names[devs.indexOf(dev)][0] || '') : '';
-  var assignee = rqaFcUserId_(fcName) || PropertiesService.getScriptProperties().getProperty('FREEDCAMP_ME') || 0;
+  var people = rqaFcPeople_(dev);
   var desc = (description ? description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>') + '<br><br>' : '') +
     'Sheet ticket: ' + title.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   var data = rqaFc_('post', 'tasks', { title: title, description: desc, project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3,
-    assigned_to_id: assignee, start_date: today, due_date: today });
+    assigned_to_id: people.assignee, start_date: today, due_date: today });
   var task = (data.tasks || [])[0] || {};
   if (!task.id) throw new Error('Freedcamp did not return the new task');
   rqaFc_('post', 'tasks/' + task.id, { status: 2 });
-  var followers = rqaSetting_('Freedcamp followers').split(',').map(function (n) { return rqaFcUserId_(n.trim()); }).filter(Boolean);
-  if (followers.length) rqaFc_('post', 'tasks/batch', { batch_ids: [task.id], followers_operation: 'subscribe', follower_ids: followers });
-  return { id: task.id, url: task.url || ('https://freedcamp.com/view/' + project + '/tasks/' + task.id) };
+  if (people.followers.length) rqaFc_('post', 'tasks/batch', { batch_ids: [Number(task.id)], followers_operation: 'subscribe', follower_ids: people.followers });
+  return { id: task.id, url: task.url || ('https://freedcamp.com/view/' + project + '/tasks/' + task.id), warnings: people.warnings };
+}
+
+/**
+ * Who a ticket's task goes to: the ticket's Dev (by the Freedcamp Name beside it in Settings), else whoever
+ * connected Freedcamp; followers from Settings. Names that match no Freedcamp user are listed in warnings.
+ */
+function rqaFcPeople_(dev) {
+  var st = SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS);
+  var devs = rqaListValues_(st, 'Dev'), names = st.getRange(2, RQA_LIST_KEYS.indexOf('Freedcamp Name') + 1, Math.max(devs.length, 1), 1).getValues();
+  var fcName = dev && devs.indexOf(dev) >= 0 ? String(names[devs.indexOf(dev)][0] || '') : '';
+  var warnings = [];
+  var assignee = rqaFcUserId_(fcName);
+  if (!assignee) {
+    warnings.push(!dev ? 'no Dev on the ticket, assigned to you' : !fcName ? dev + ' has no Freedcamp Name in Settings, assigned to you' : '"' + fcName + '" not found in Freedcamp, assigned to you');
+    assignee = rqaFcMe_();
+  }
+  var followers = [];
+  rqaSetting_('Freedcamp followers').split(',').map(function (n) { return n.trim(); }).filter(String).forEach(function (n) {
+    var id = rqaFcUserId_(n);
+    if (id) followers.push(Number(id)); else warnings.push('follower "' + n + '" not found in Freedcamp');
+  });
+  return { assignee: String(assignee || 0), followers: followers, warnings: warnings };
+}
+
+/** The Freedcamp user id of whoever connected Freedcamp (the API key's owner). */
+function rqaFcMe_() {
+  var props = PropertiesService.getScriptProperties(), me = props.getProperty('FREEDCAMP_ME');
+  if (me) return me;
+  var d = rqaFc_('get', 'users/current');
+  var u = (d.users || [d.user || d])[0] || {};
+  me = String(u.user_id || u.id || '');
+  if (me) props.setProperty('FREEDCAMP_ME', me);
+  return me;
+}
+
+/** Menu: set the assignee and followers again on the Freedcamp tasks of the selected Dev Tickets rows. */
+function rqaFixFreedcampPeople() {
+  var ss = SpreadsheetApp.getActive(), sh = ss.getActiveSheet();
+  if (sh.getName() !== RQA_TICKETS) return SpreadsheetApp.getUi().alert('Select the ticket rows on the "' + RQA_TICKETS + '" tab first.');
+  var h = rqaHeaders_(sh, RQA_T.head), done = [], notes = [];
+  sh.getActiveRangeList().getRanges().forEach(function (rg) {
+    for (var r = Math.max(rg.getRow(), RQA_T.first); r <= rg.getLastRow(); r++) {
+      var link = sh.getRange(r, h[RQA_TK.fc] + 1).getRichTextValue(), url = link && link.getLinkUrl(), m = url && url.match(/tasks\/(\d+)/);
+      if (!m) continue;
+      var people = rqaFcPeople_(String(sh.getRange(r, h[RQA_TK.dev] + 1).getValue() || ''));
+      rqaFc_('post', 'tasks/' + m[1], { assigned_to_id: people.assignee });
+      if (people.followers.length) rqaFc_('post', 'tasks/batch', { batch_ids: [Number(m[1])], followers_operation: 'subscribe', follower_ids: people.followers });
+      done.push(m[1]); notes = notes.concat(people.warnings);
+    }
+  });
+  SpreadsheetApp.getUi().alert(done.length ? 'Updated task(s) ' + done.join(', ') + '.' + (notes.length ? '\n\nNote: ' + notes.join('; ') : '') : 'No selected row has a Freedcamp task link.');
 }
 
 /** Every 15 min: tickets that became Passed or Closed get their Freedcamp task marked complete (once). */

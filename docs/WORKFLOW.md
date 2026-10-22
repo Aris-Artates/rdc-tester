@@ -102,7 +102,14 @@ Every 15 minutes, tasks of tickets that became **Passed** or **Closed** are mark
 **Still manual:** connecting once. In Freedcamp, *My Account > API* create a **secured** key, then in the
 spreadsheet *RDC QA > Connect Freedcamp…* and paste the key and secret (you type them; nobody else sees them).
 Freedcamp's API has no task "followers" on create, so they are added right after; if Freedcamp ever rejects a
-step, the cell stays unticked and a message says why.
+step, the cell stays unticked and a message says why. If a Dev or follower name matches no Freedcamp user,
+the task is still created (assigned to whoever connected) and the message names who was not found.
+
+**Created by** is always the owner of the API key used in *Connect Freedcamp* — Freedcamp sets it from the key
+and the API cannot change it. Assignee and followers are set per ticket.
+
+**Fixing an existing task:** select its row(s) on Dev Tickets, then *RDC QA > Fix Freedcamp assignee & followers
+(selected tickets)*.
 
 ## Recommended upgrades
 
