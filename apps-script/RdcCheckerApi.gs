@@ -90,7 +90,7 @@ function onOpen() {
     .addItem('Refresh statuses', 'rqaRefresh')
     .addSeparator()
     .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
-    .addItem('Fix Freedcamp assignee & followers (selected tickets)', 'rqaFixFreedcampPeople')
+    .addItem('Fix Freedcamp assignee, followers & dates (selected tickets)', 'rqaFixFreedcampPeople')
     .addItem('Disconnect Freedcamp', 'rqaDisconnectFreedcamp')
     .addItem('Create checker token…', 'rqaCreateToken')
     .addToUi();
@@ -983,17 +983,23 @@ function rqaFcMe_() {
   return me;
 }
 
-/** Menu: set the assignee and followers again on the Freedcamp tasks of the selected Dev Tickets rows. */
+/**
+ * Menu: on the Freedcamp tasks of the selected Dev Tickets rows, set again the assignee, the followers,
+ * and the start + due date = the ticket's Date cell (the date picked in the sheet).
+ */
 function rqaFixFreedcampPeople() {
   var ss = SpreadsheetApp.getActive(), sh = ss.getActiveSheet();
   if (sh.getName() !== RQA_TICKETS) return SpreadsheetApp.getUi().alert('Select the ticket rows on the "' + RQA_TICKETS + '" tab first.');
-  var h = rqaHeaders_(sh, RQA_T.head), done = [], notes = [];
+  var h = rqaHeaders_(sh, RQA_T.head), done = [], notes = [], tz = ss.getSpreadsheetTimeZone();
   sh.getActiveRangeList().getRanges().forEach(function (rg) {
     for (var r = Math.max(rg.getRow(), RQA_T.first); r <= rg.getLastRow(); r++) {
       var link = sh.getRange(r, h[RQA_TK.fc] + 1).getRichTextValue(), url = link && link.getLinkUrl(), m = url && url.match(/tasks\/(\d+)/);
       if (!m) continue;
       var people = rqaFcPeople_(String(sh.getRange(r, h[RQA_TK.dev] + 1).getValue() || ''));
-      rqaFc_('post', 'tasks/' + m[1], { assigned_to_id: people.assignee });
+      var edit = { assigned_to_id: people.assignee }, date = sh.getRange(r, h[RQA_TK.date] + 1).getValue();
+      if (date instanceof Date) edit.start_date = edit.due_date = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
+      else notes.push('ticket ' + String(sh.getRange(r, h[RQA_TK.ticket] + 1).getDisplayValue()).split('|')[0].trim() + ' has no Date, so its dates were left as they were');
+      rqaFc_('post', 'tasks/' + m[1], edit);
       if (people.followers.length) rqaFc_('post', 'tasks/batch', { batch_ids: [Number(m[1])], followers_operation: 'subscribe', follower_ids: people.followers });
       done.push(m[1]); notes = notes.concat(people.warnings);
     }

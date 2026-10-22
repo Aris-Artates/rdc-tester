@@ -108,8 +108,8 @@ the task is still created (assigned to whoever connected) and the message names 
 **Created by** is always the owner of the API key used in *Connect Freedcamp* — Freedcamp sets it from the key
 and the API cannot change it. Assignee and followers are set per ticket.
 
-**Fixing an existing task:** select its row(s) on Dev Tickets, then *RDC QA > Fix Freedcamp assignee & followers
-(selected tickets)*.
+**Fixing an existing task:** set the ticket's **Date** with the date picker, select its row(s) on Dev Tickets, then *RDC QA > Fix Freedcamp assignee, followers & dates
+(selected tickets)*. It sets the assignee, the followers, and the task's start and due date to that Date.
 
 ## Recommended upgrades
 
