@@ -44,6 +44,10 @@ if (sheetConfigured()) {
   catch (e) { console.log(`Sheet not read (${e.message}). Running without it: no cancel list, no references, no push.`); }
 } else console.log('Sheet not configured (SHEET_WEBAPP_URL / SHEET_TOKEN): no cancel list, no references, results go to the CSV only.');
 
+// A filter flag without a value ("--kind --push") would silently mean "everything": refuse it.
+for (const f of ['only', 'module', 'kind', 'role', 'status', 'ticket']) {
+  if (opt(f) === true) { console.log(`--${f} needs a value, e.g. --${f} ${{ only: 'PUB-001', module: '"Access & Sign-in"', kind: 'Logic', role: 'admin', status: 'Fail', ticket: '12' }[f]}`); process.exit(1); }
+}
 const only = list(opt('only')), modules = list(opt('module')), kinds = list(opt('kind')), roles = list(opt('role')), statuses = list(opt('status'));
 const tickets = list(opt('ticket'))?.map(s => s.replace(/\D/g, '')).filter(Boolean);
 if (tickets && !sheet.size) { console.log('--ticket needs the sheet (the Dev Ticket links live there).'); process.exit(1); }

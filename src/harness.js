@@ -54,7 +54,7 @@ export function makeT({ page, test, sheetRow }) {
       const deadline = Date.now() + timeout;
       let body = '';
       while (Date.now() < deadline) {
-        body = await page.locator(within).first().innerText().catch(() => '');
+        body = await page.locator(within).first().innerText({ timeout: 1000 }).catch(() => '');
         if (re.test(body)) return true;
         await new Promise(r => setTimeout(r, 250));
       }

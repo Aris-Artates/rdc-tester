@@ -217,8 +217,14 @@ async function start(kind, args, title) {
   });
 }
 
-$('#go').onclick = () => start('run', runArgs(false), 'Run');
-$('#dry').onclick = () => start('run', runArgs(true), 'Dry run');
+// A group with nothing ticked would run nothing: say so instead of starting.
+function emptyGroup() {
+  const g = [['mod', 'Modules'], ['kind', 'Kinds'], ['role', 'Accounts']].find(([n]) => !picked(n).some(i => i.checked));
+  if (g) { $('#log').textContent = `Nothing to run: tick at least one box under "${g[1]}".`; return true; }
+  return false;
+}
+$('#go').onclick = () => !emptyGroup() && start('run', runArgs(false), 'Run');
+$('#dry').onclick = () => !emptyGroup() && start('run', runArgs(true), 'Dry run');
 $('#stop').onclick = () => JOB && fetch('/api/stop/' + JOB, { method: 'POST' });
 const toRun = fn => { document.querySelector('nav button[data-t=run]').click(); fn(); };
 $('#sync').onclick = () => toRun(() => start('sync', [], 'Sync'));

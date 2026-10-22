@@ -53,20 +53,23 @@ function explainHtml(text, res) {
 }
 
 /**
- * Test rows from the sheet's "QA Tests" tab, by TC ID:
- * { id, caseStatus, devTicket, reference, latest, ... }. Cached so a Google hiccup doesn't stop a run.
+ * Test rows from the sheet's "Test Cases" tab, by TC ID:
+ * { id, caseStatus, devTicket, reference, latest, ... }.
+ * Cached so a passing Google hiccup doesn't stop a run. The copy is only used for the SAME web app,
+ * and never to hide a setup mistake (sign-in page, wrong token, old deployment): those must be fixed.
  */
 const CACHE = path.join(ROOT, 'results', 'sheet-cache.json');
 export async function loadSheetRows() {
   try {
     const { rows } = await call('GET', { action: 'tests' });
     fs.mkdirSync(path.dirname(CACHE), { recursive: true });
-    fs.writeFileSync(CACHE, JSON.stringify({ at: new Date().toISOString(), rows }));
+    fs.writeFileSync(CACHE, JSON.stringify({ at: new Date().toISOString(), url: config.webappUrl, rows }));
     return new Map(rows.map(r => [r.id, r]));
   } catch (e) {
-    if (!fs.existsSync(CACHE)) throw e;
-    const c = JSON.parse(fs.readFileSync(CACHE, 'utf8'));
-    console.log(`  Sheet not readable just now (${e.message.slice(0, 90)}); using the copy from ${c.at.slice(0, 16).replace('T', ' ')}.`);
+    const transient = /No answer from the web app|did not return JSON/.test(e.message);
+    const c = transient && fs.existsSync(CACHE) ? JSON.parse(fs.readFileSync(CACHE, 'utf8')) : null;
+    if (!c || c.url !== config.webappUrl) throw e;
+    console.log(`  Sheet not readable just now (${e.message}); using the copy from ${c.at.slice(0, 16).replace('T', ' ')}.`);
     return new Map(c.rows.map(r => [r.id, r]));
   }
 }

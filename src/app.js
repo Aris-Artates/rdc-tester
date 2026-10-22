@@ -63,19 +63,52 @@ export async function login(page, account) {
   if (!(await dialog.isVisible().catch(() => false))) return { ok: false, message: 'The "Member Portal Sign In" dialog did not open' };
   await dialog.locator('input[name="username"]').fill(account.username);
   await dialog.locator('input[name="password"]').fill(account.password);
+
+  // Record what happens after Sign In, so a failure says WHICH step went wrong:
+  // the server calls (sign-in and session check) and every page the browser passed through.
+  const calls = [], visited = [];
+  let started = Date.now(), sent = 0;
+  const onRequest = r => { if (r.url().includes('/_serverFn')) sent++; };
+  const onResponse = r => { if (r.url().includes('/_serverFn')) calls.push({ status: r.status(), ms: Date.now() - started }); };
+  const onNav = f => { if (f === page.mainFrame()) visited.push(pathOf(f.url())); };
+  page.on('request', onRequest);
+  page.on('response', onResponse);
+  page.on('framenavigated', onNav);
+  const stop = () => { page.off('request', onRequest); page.off('response', onResponse); page.off('framenavigated', onNav); };
+  const bounced = () => `Signed in, but ${[...new Set(visited.filter(p => p !== '/'))].join(', ')} sent the browser back to the home page: the session was not kept. Server calls: ${describeCalls(calls)}`;
+  const who = `username "${account.username}", password of ${account.password.length} characters`;
+  started = Date.now();
   await dialog.getByRole('button', { name: /^Sign In$/ }).click();
-  const deadline = Date.now() + config.pageTimeoutMs;
+
+  // Signing in can be slow on a cold server: allow twice the page timeout.
+  const deadline = started + config.pageTimeoutMs * 2;
   while (Date.now() < deadline) {
     if (pathOf(page.url()) !== '/') {
       await settle(page);
+      stop();
+      // A member page that cannot find the session redirects back to "/" a moment later.
+      if (pathOf(page.url()) === '/') return { ok: false, message: bounced() };
       return { ok: true, message: 'Signed in; landed on ' + pathOf(page.url()), landed: pathOf(page.url()) };
     }
-    const alert = await dialog.getByRole('alert').innerText().catch(() => '');
-    if (alert) return { ok: false, message: `Sign-in refused: "${alert.trim()}" (username "${account.username}", password of ${account.password.length} characters)` };
+    // count() answers at once; innerText() on a missing element would wait the whole timeout.
+    const alertBox = dialog.getByRole('alert');
+    const alert = (await alertBox.count().catch(() => 0)) ? await alertBox.innerText().catch(() => '') : '';
+    if (alert) { stop(); return { ok: false, message: `Sign-in refused: "${alert.trim()}" (${who})` }; }
+    if (visited.some(p => p !== '/') && !(await dialog.isVisible().catch(() => false))) { stop(); return { ok: false, message: bounced() }; }
     await sleep(250);
   }
-  return { ok: false, message: 'Sign In did nothing within ' + config.pageTimeoutMs / 1000 + 's' };
+  stop();
+  const busy = /Signing in/i.test(await dialog.innerText({ timeout: 1000 }).catch(() => ''));
+  const dialogOpen = await dialog.isVisible().catch(() => false);
+  const what = !sent ? 'the Sign In click sent nothing to the server (form not ready?)'
+    : !calls.length ? `the server never answered the sign-in request (${sent} sent)`
+    : busy ? `the server did not finish signing in (the button still says "Signing in…")`
+      : !dialogOpen ? 'the dialog closed but the app stayed on the home page (session not kept?)'
+        : 'the server answered but the app showed no message and stayed on the home page';
+  return { ok: false, message: `Sign In failed after ${Math.round((Date.now() - started) / 1000)}s: ${what}. Server calls: ${describeCalls(calls)}; pages: ${visited.join(' > ') || '(none)'} (${who})` };
 }
+
+const describeCalls = calls => (calls.length ? calls.map(c => `HTTP ${c.status} after ${(c.ms / 1000).toFixed(1)}s`).join(', ') : 'none');
 
 /** Log out through the profile menu (top right). The app asks a native confirm(), which is accepted. */
 export async function logout(page) {
