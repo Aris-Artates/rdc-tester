@@ -16,9 +16,10 @@ How the tabs are used day to day: **[WORKFLOW.md](WORKFLOW.md)**.
 3. **Settings** tab: check the **Dev** list and each dev's **Freedcamp Name** (as Freedcamp shows it,
    e.g. `Jondie Mar G.`). If RDC tickets should continue the team's shared numbering, put the next number in
    **Dev Tickets!G2** and `N | ` in **A2** before logging the first ticket.
-4. **Freedcamp** (optional, recommended): Freedcamp > *My Account > API* > create a **secured** key.
-   Then *RDC QA > Connect Freedcamp…* and paste the key and the secret. This checks the key and turns on
-   ticket → task creation and the 15-minute "mark complete" sync.
+4. **Freedcamp** (optional, recommended): **each dev** connects their own key once, with
+   *RDC QA > Connect Freedcamp…* (Dev name, API key, API secret). Steps, and where the key is in Freedcamp:
+   [WORKFLOW.md > Connecting: once per dev](WORKFLOW.md#connecting-once-per-dev). Keys stay private to each
+   person; a dev's tickets then create tasks "Created by" that dev.
 5. **Automated checker** (optional):
    - *RDC QA > Create checker token…* and copy the token it shows.
    - Apps Script: **Deploy > New deployment** > **Web app**, *Execute as* **Me**, *Who has access* **Anyone**

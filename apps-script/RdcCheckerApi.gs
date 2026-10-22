@@ -127,9 +127,13 @@ function rqaTicketEdit_(e, sh) {
     return rqaRefresh();
   }
   if (c === h[RQA_TK.ticket] + 1 || c === h[RQA_TK.fixOf] + 1) return rqaRefresh();
-  if (c === h[RQA_TK.fc] + 1 && e.value === 'TRUE' && !rqaFreedcampConnected_()) {
-    sh.getRange(r, c).setValue(false);
-    SpreadsheetApp.getActive().toast('Freedcamp is not connected yet: RDC QA > Connect Freedcamp.', 'Freedcamp', 6);
+  if (c === h[RQA_TK.fc] + 1 && e.value === 'TRUE') {
+    var dev = String(sh.getRange(r, h[RQA_TK.dev] + 1).getValue() || '');
+    if (!rqaFreedcampReady_(dev)) {
+      sh.getRange(r, c).setValue(false);
+      SpreadsheetApp.getActive().toast(dev ? dev + ' has not connected Freedcamp yet: ' + dev + ' runs RDC QA > Connect Freedcamp once.'
+        : 'Pick the Dev first, then tick Freedcamp.', 'Freedcamp', 8);
+    }
   }
 }
 
@@ -834,42 +838,83 @@ function rqaSyncTests_(tests, update) {
 
 // ================================================================ Freedcamp
 
-/** Menu: asks for the Freedcamp API key and secret, checks them, and turns on the Freedcamp triggers. */
+/*
+ * Each dev connects their OWN Freedcamp key. It is kept in that person's user properties, which only they can
+ * read, and their own triggers act only on tickets whose Dev is them: the task is then "Created by" that dev.
+ * Script properties hold only the NAMES of connected devs (FREEDCAMP_DEVS). A key saved by the first version
+ * (one shared key in script properties) still works as a fallback for devs who have not connected yet.
+ */
+var RQA_FC_KEYS = ['FREEDCAMP_API_KEY', 'FREEDCAMP_API_SECRET', 'FREEDCAMP_ME', 'FREEDCAMP_SYNCED', 'FREEDCAMP_DEV'];
+
+/** The key the running person uses: their own, or the old shared one. Null when neither exists. */
+function rqaFcKeys_() {
+  var u = PropertiesService.getUserProperties();
+  if (u.getProperty('FREEDCAMP_API_KEY')) return { props: u, shared: false, dev: u.getProperty('FREEDCAMP_DEV') || '' };
+  var s = PropertiesService.getScriptProperties();
+  if (s.getProperty('FREEDCAMP_API_KEY')) return { props: s, shared: true, dev: '' };
+  return null;
+}
+function rqaFcDevs_() { return JSON.parse(PropertiesService.getScriptProperties().getProperty('FREEDCAMP_DEVS') || '{}'); }
+function rqaFcSetDev_(dev, on) {
+  var reg = rqaFcDevs_();
+  if (on) reg[dev] = true; else delete reg[dev];
+  PropertiesService.getScriptProperties().setProperty('FREEDCAMP_DEVS', JSON.stringify(reg));
+}
+/** Whether a ticket of this dev can be sent: the dev connected, or the old shared key exists. */
+function rqaFreedcampReady_(dev) { return !!rqaFcDevs_()[dev] || !!PropertiesService.getScriptProperties().getProperty('FREEDCAMP_API_KEY'); }
+/** Inside a trigger: should THIS person's trigger act on a ticket of `dev`? (Exactly one trigger says yes.) */
+function rqaFcHandles_(keys, dev) { return keys && (keys.shared ? !rqaFcDevs_()[dev] : keys.dev === dev); }
+
+/** Menu: the person running it connects their own Freedcamp key for their own tickets. */
 function rqaConnectFreedcamp() {
   var ui = SpreadsheetApp.getUi();
-  var k = ui.prompt('Connect Freedcamp (1/2)', 'Freedcamp > My Account > API: create a SECURED key and paste the API KEY here.', ui.ButtonSet.OK_CANCEL);
+  var devs = rqaListValues_(SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS), 'Dev');
+  var d = ui.prompt('Connect Freedcamp (1/3)', 'Which Dev are you? Type your name as it is in the Dev list: ' + devs.join(', '), ui.ButtonSet.OK_CANCEL);
+  if (d.getSelectedButton() !== ui.Button.OK) return;
+  var dev = devs.filter(function (x) { return x.toLowerCase() === d.getResponseText().trim().toLowerCase(); })[0];
+  if (!dev) return ui.alert('"' + d.getResponseText().trim() + '" is not in the Dev list (Settings tab). Add yourself there first.');
+  var k = ui.prompt('Connect Freedcamp (2/3)', 'In Freedcamp: your avatar > My Account > API. Create a SECURED key and paste the API KEY here.', ui.ButtonSet.OK_CANCEL);
   if (k.getSelectedButton() !== ui.Button.OK || !k.getResponseText().trim()) return;
-  var s = ui.prompt('Connect Freedcamp (2/2)', 'Paste the API SECRET (shown on the same page after entering your password).', ui.ButtonSet.OK_CANCEL);
+  var s = ui.prompt('Connect Freedcamp (3/3)', 'Paste the API SECRET (shown on the same page after entering your Freedcamp password).', ui.ButtonSet.OK_CANCEL);
   if (s.getSelectedButton() !== ui.Button.OK || !s.getResponseText().trim()) return;
-  var props = PropertiesService.getScriptProperties();
-  props.setProperties({ FREEDCAMP_API_KEY: k.getResponseText().trim(), FREEDCAMP_API_SECRET: s.getResponseText().trim() });
+  var mine = ScriptApp.getProjectTriggers().filter(function (t) { return /^rqa(OnEditFreedcamp|SyncFreedcamp)$/.test(t.getHandlerFunction()); });
+  var user = PropertiesService.getUserProperties();
+  var before = user.getProperty('FREEDCAMP_DEV');
+  RQA_FC_KEYS.forEach(function (p) { user.deleteProperty(p); });
+  user.setProperties({ FREEDCAMP_API_KEY: k.getResponseText().trim(), FREEDCAMP_API_SECRET: s.getResponseText().trim(), FREEDCAMP_DEV: dev });
   try {
-    props.deleteProperty('FREEDCAMP_ME');
     rqaFcMe_();
   } catch (err) {
-    props.deleteProperty('FREEDCAMP_API_KEY'); props.deleteProperty('FREEDCAMP_API_SECRET');
-    ui.alert('Freedcamp refused the key: ' + err.message);
-    return;
+    RQA_FC_KEYS.forEach(function (p) { user.deleteProperty(p); });
+    return ui.alert('Freedcamp refused the key: ' + err.message);
   }
-  ScriptApp.getProjectTriggers().forEach(function (t) { if (/^rqa(OnEditFreedcamp|SyncFreedcamp)$/.test(t.getHandlerFunction())) ScriptApp.deleteTrigger(t); });
+  if (before && before !== dev) rqaFcSetDev_(before, false);
+  rqaFcSetDev_(dev, true);
+  // Whoever made the old shared connection had its triggers; reconnecting personally retires the shared key.
+  if (mine.length) RQA_FC_KEYS.forEach(function (p) { PropertiesService.getScriptProperties().deleteProperty(p); });
+  mine.forEach(function (t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('rqaOnEditFreedcamp').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
   ScriptApp.newTrigger('rqaSyncFreedcamp').timeBased().everyMinutes(15).create();
-  ui.alert('Freedcamp connected. Tick a ticket\'s Freedcamp box to create its task.');
+  ui.alert('Connected as ' + dev + '. Ticking Freedcamp on ' + dev + '\'s tickets now creates the task from your Freedcamp account (Created by you).');
 }
 
+/** Menu: the person running it disconnects their own key. */
 function rqaDisconnectFreedcamp() {
-  ScriptApp.getProjectTriggers().forEach(function (t) { if (/^rqa(OnEditFreedcamp|SyncFreedcamp)$/.test(t.getHandlerFunction())) ScriptApp.deleteTrigger(t); });
-  ['FREEDCAMP_API_KEY', 'FREEDCAMP_API_SECRET', 'FREEDCAMP_ME', 'FREEDCAMP_SYNCED'].forEach(function (p) { PropertiesService.getScriptProperties().deleteProperty(p); });
-  SpreadsheetApp.getActive().toast('Freedcamp disconnected.', 'Freedcamp', 5);
+  var mine = ScriptApp.getProjectTriggers().filter(function (t) { return /^rqa(OnEditFreedcamp|SyncFreedcamp)$/.test(t.getHandlerFunction()); });
+  var user = PropertiesService.getUserProperties(), dev = user.getProperty('FREEDCAMP_DEV');
+  if (dev) rqaFcSetDev_(dev, false);
+  RQA_FC_KEYS.forEach(function (p) { user.deleteProperty(p); });
+  // The person whose triggers used the old shared key also removes that key.
+  if (mine.length && !dev) RQA_FC_KEYS.forEach(function (p) { PropertiesService.getScriptProperties().deleteProperty(p); });
+  mine.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  SpreadsheetApp.getActive().toast('Freedcamp disconnected' + (dev ? ' for ' + dev : '') + '.', 'Freedcamp', 5);
 }
-
-function rqaFreedcampConnected_() { return !!PropertiesService.getScriptProperties().getProperty('FREEDCAMP_API_KEY'); }
 
 /** One Freedcamp API call with a secured key (HMAC-SHA1 of key + timestamp). Returns the response's data. */
 function rqaFc_(method, path, payload) {
-  var p = PropertiesService.getScriptProperties();
-  var key = p.getProperty('FREEDCAMP_API_KEY'), secret = p.getProperty('FREEDCAMP_API_SECRET');
-  if (!key || !secret) throw new Error('Freedcamp is not connected (RDC QA > Connect Freedcamp)');
+  var keys = rqaFcKeys_();
+  if (!keys) throw new Error('Freedcamp is not connected for you (RDC QA > Connect Freedcamp)');
+  var key = keys.props.getProperty('FREEDCAMP_API_KEY'), secret = keys.props.getProperty('FREEDCAMP_API_SECRET');
   var ts = String(Math.floor(Date.now() / 1000));
   var hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, key + ts, secret)
     .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
@@ -906,11 +951,15 @@ function rqaFcUserId_(name) {
   return hit ? hit.id : null;
 }
 
-/** Installable onEdit (runs as the person who connected Freedcamp, so it may call Freedcamp). */
+/**
+ * Installable onEdit. Every connected dev has one; each acts only on its own dev's tickets
+ * (the old shared key covers devs who have not connected), so a tick makes exactly one task.
+ */
 function rqaOnEditFreedcamp(e) {
   if (!e || !e.range || e.range.getSheet().getName() !== RQA_TICKETS || e.value !== 'TRUE' || e.range.getRow() < RQA_T.first) return;
   var sh = e.range.getSheet(), h = rqaHeaders_(sh, RQA_T.head), r = e.range.getRow();
   if (e.range.getColumn() !== h[RQA_TK.fc] + 1) return;
+  if (!rqaFcHandles_(rqaFcKeys_(), String(sh.getRange(r, h[RQA_TK.dev] + 1).getValue() || ''))) return;
   var lock = LockService.getDocumentLock();
   lock.waitLock(20000);
   try {
@@ -972,9 +1021,11 @@ function rqaFcPeople_(dev) {
   return { assignee: String(assignee || 0), followers: followers, warnings: warnings };
 }
 
-/** The Freedcamp user id of whoever connected Freedcamp (the API key's owner). */
+/** The Freedcamp user id of the key's owner (the running person, or the old shared key's owner). */
 function rqaFcMe_() {
-  var props = PropertiesService.getScriptProperties(), me = props.getProperty('FREEDCAMP_ME');
+  var keys = rqaFcKeys_();
+  if (!keys) throw new Error('Freedcamp is not connected for you (RDC QA > Connect Freedcamp)');
+  var props = keys.props, me = props.getProperty('FREEDCAMP_ME');
   if (me) return me;
   var d = rqaFc_('get', 'users/current');
   var u = (d.users || [d.user || d])[0] || {};
@@ -1007,19 +1058,20 @@ function rqaFixFreedcampPeople() {
   SpreadsheetApp.getUi().alert(done.length ? 'Updated task(s) ' + done.join(', ') + '.' + (notes.length ? '\n\nNote: ' + notes.join('; ') : '') : 'No selected row has a Freedcamp task link.');
 }
 
-/** Every 15 min: tickets that became Passed or Closed get their Freedcamp task marked complete (once). */
+/** Every 15 min, per connected dev: their tickets that became Passed or Closed get the task marked complete (once). */
 function rqaSyncFreedcamp() {
   if (!/^y/i.test(rqaSetting_('Freedcamp: complete task when ticket Passed/Closed'))) return;
-  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS);
-  if (!sh) return;
+  var keys = rqaFcKeys_(), sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS);
+  if (!keys || !sh) return;
   var h = rqaHeaders_(sh, RQA_T.head), n = rqaLastTicketRow_(sh, h) - RQA_T.first + 1;
   if (n < 1) return;
   var links = sh.getRange(RQA_T.first, h[RQA_TK.fc] + 1, n, 1).getRichTextValues();
   var status = sh.getRange(RQA_T.first, h[RQA_TK.status] + 1, n, 1).getValues();
-  var props = PropertiesService.getScriptProperties(), done = JSON.parse(props.getProperty('FREEDCAMP_SYNCED') || '{}');
+  var devCol = sh.getRange(RQA_T.first, h[RQA_TK.dev] + 1, n, 1).getValues();
+  var props = keys.props, done = JSON.parse(props.getProperty('FREEDCAMP_SYNCED') || '{}');
   links.forEach(function (row, i) {
     var url = row[0] && row[0].getLinkUrl(), m = url && url.match(/tasks\/(\d+)/);
-    if (!m) return;
+    if (!m || !rqaFcHandles_(keys, String(devCol[i][0] || ''))) return;
     var finished = status[i][0] === RQA_S.passed || status[i][0] === RQA_S.closed;
     if (finished && !done[m[1]]) { try { rqaFc_('post', 'tasks/' + m[1], { status: 1 }); done[m[1]] = 1; } catch (_) {} }
     if (!finished && done[m[1]]) { try { rqaFc_('post', 'tasks/' + m[1], { status: 2 }); delete done[m[1]]; } catch (_) {} }

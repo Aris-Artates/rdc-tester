@@ -99,14 +99,27 @@ follower Meldz A.) is fully scripted. Ticking **Freedcamp** on a ticket:
 Every 15 minutes, tasks of tickets that became **Passed** or **Closed** are marked **complete** in Freedcamp
 (and reopened if the ticket goes back to failing). Turn this off in Settings.
 
-**Still manual:** connecting once. In Freedcamp, *My Account > API* create a **secured** key, then in the
-spreadsheet *RDC QA > Connect Freedcamp…* and paste the key and secret (you type them; nobody else sees them).
+### Connecting: once per dev
+
+Every dev connects **their own** Freedcamp key, so tasks for their tickets are **Created by** them
+(Freedcamp sets "Created by" from the key; the API cannot change it).
+
+1. Get edit access to the spreadsheet (the owner shares it with your Google account).
+2. In **Freedcamp**: click your avatar (bottom left) > **My Account** > **API** tab. Create a **Secured** key.
+   Copy the **API key**; enter your Freedcamp password on that page to see the **API secret** and copy it too.
+3. Make sure your name is in the **Dev** list on the **Settings** tab, with your **Freedcamp Name** beside it.
+4. In the **spreadsheet**: menu **RDC QA > Connect Freedcamp…**. The first time, Google asks you to authorize
+   the script with *your* Google account (*Continue* > your account > *Allow*; "unverified app" > *Advanced* >
+   *Go to RDC QA*). Then answer the three boxes: your Dev name, the API key, the API secret.
+
+Your key is stored in **your own** script storage (Apps Script user properties): other people using the sheet
+cannot read it, and only your tickets use it. The sheet only records *that* you are connected.
+*RDC QA > Disconnect Freedcamp* removes it again. If someone ticks Freedcamp on a ticket whose Dev has not
+connected, nothing is sent and the message says who has to connect.
+
 Freedcamp's API has no task "followers" on create, so they are added right after; if Freedcamp ever rejects a
 step, the cell stays unticked and a message says why. If a Dev or follower name matches no Freedcamp user,
-the task is still created (assigned to whoever connected) and the message names who was not found.
-
-**Created by** is always the owner of the API key used in *Connect Freedcamp* — Freedcamp sets it from the key
-and the API cannot change it. Assignee and followers are set per ticket.
+the task is still created (assigned to the key's owner) and the message names who was not found.
 
 **Fixing an existing task:** set the ticket's **Date** with the date picker, select its row(s) on Dev Tickets, then *RDC QA > Fix Freedcamp assignee, followers & dates
 (selected tickets)*. It sets the assignee, the followers, and the task's start and due date to that Date.
