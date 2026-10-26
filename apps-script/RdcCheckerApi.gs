@@ -92,7 +92,7 @@ function onOpen() {
     .addItem('Refresh statuses', 'rqaRefresh')
     .addSeparator()
     .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
-    .addItem('Fix Freedcamp assignee, followers & dates (selected tickets)', 'rqaFixFreedcampPeople')
+    .addItem('Fix Freedcamp task: name, assignee, followers & dates (selected tickets)', 'rqaFixFreedcampPeople')
     .addItem('Disconnect Freedcamp', 'rqaDisconnectFreedcamp')
     .addItem('Create checker token…', 'rqaCreateToken')
     .addToUi();
@@ -1034,13 +1034,18 @@ function rqaOnEditFreedcamp(e) {
  * The team's fixed recipe: assigned to the ticket's dev (or whoever connected Freedcamp), In Progress,
  * start and due date today, priority High, followers from Settings (Meldz A.).
  */
+/** A task's description: the ticket's Description, then the sheet ticket and its branch (HTML, as Freedcamp shows it). */
+function rqaFcDescription_(title, description) {
+  var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
+  return (description ? esc(description).replace(/\n/g, '<br>') + '<br><br>' : '') +
+    'Sheet ticket: ' + esc(title) + '<br>Branch: ' + BRANCH_NAME(title);
+}
+
 function rqaCreateFreedcampTask_(title, description, dev) {
   var project = rqaSetting_('Freedcamp project ID');
   var today = Utilities.formatDate(new Date(), RQA_TZ, 'yyyy-MM-dd');
   var people = rqaFcPeople_(dev);
-  var desc = (description ? description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>') + '<br><br>' : '') +
-    'Sheet ticket: ' + title.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '<br>Branch: ' + BRANCH_NAME(title);
-  var data = rqaFc_('post', 'tasks', { title: title, description: desc, project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3,
+  var data = rqaFc_('post', 'tasks', { title: title, description: rqaFcDescription_(title, description), project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3,
     assigned_to_id: people.assignee, start_date: today, due_date: today });
   var task = (data.tasks || [])[0] || {};
   if (!task.id) throw new Error('Freedcamp did not return the new task');
@@ -1085,7 +1090,8 @@ function rqaFcMe_() {
 }
 
 /**
- * Menu: on the Freedcamp tasks of the selected Dev Tickets rows, set again the assignee, the followers,
+ * Menu: on the Freedcamp tasks of the selected Dev Tickets rows, set again the name and description (from the ticket),
+ * the assignee, the followers,
  * and the start + due date = the ticket's Date cell (the date picked in the sheet).
  */
 function rqaFixFreedcampPeople() {
@@ -1098,8 +1104,14 @@ function rqaFixFreedcampPeople() {
       if (!m) continue;
       var people = rqaFcPeople_(String(sh.getRange(r, h[RQA_TK.dev] + 1).getValue() || ''));
       var edit = { assigned_to_id: people.assignee }, date = sh.getRange(r, h[RQA_TK.date] + 1).getValue();
+      var title = String(sh.getRange(r, h[RQA_TK.ticket] + 1).getDisplayValue()).trim(), num = title.split('|')[0].trim();
+      // A ticket renamed in the sheet: the task takes the new name, and its description the new name and branch.
+      if (rqaParseTicket_(title)) {
+        edit.title = title;
+        edit.description = rqaFcDescription_(title, String(sh.getRange(r, h[RQA_TK.desc] + 1).getValue() || ''));
+      } else notes.push('ticket ' + num + ' has no title, so its task name was left as it was');
       if (date instanceof Date) edit.start_date = edit.due_date = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
-      else notes.push('ticket ' + String(sh.getRange(r, h[RQA_TK.ticket] + 1).getDisplayValue()).split('|')[0].trim() + ' has no Date, so its dates were left as they were');
+      else notes.push('ticket ' + num + ' has no Date, so its dates were left as they were');
       rqaFc_('post', 'tasks/' + m[1], edit);
       if (people.followers.length) rqaFc_('post', 'tasks/batch', { batch_ids: [Number(m[1])], followers_operation: 'subscribe', follower_ids: people.followers });
       done.push(m[1]); notes = notes.concat(people.warnings);

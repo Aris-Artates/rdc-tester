@@ -125,8 +125,10 @@ Freedcamp's API has no task "followers" on create, so they are added right after
 step, the cell stays unticked and a message says why. If a Dev or follower name matches no Freedcamp user,
 the task is still created (assigned to the key's owner) and the message names who was not found.
 
-**Fixing an existing task:** set the ticket's **Date** with the date picker, select its row(s) on Dev Tickets, then *RDC QA > Fix Freedcamp assignee, followers & dates
-(selected tickets)*. It sets the assignee, the followers, and the task's start and due date to that Date.
+**Fixing an existing task** (e.g. after correcting a ticket's name): fix the ticket in the sheet (name, Description,
+Dev, or the **Date** with the date picker), select its row(s) on Dev Tickets, then *RDC QA > Fix Freedcamp task: name,
+assignee, followers & dates (selected tickets)*. The task gets the ticket's current name, a description with the
+current name and branch, the assignee and followers, and its start and due date set to that Date.
 
 ## Recommended upgrades
 
