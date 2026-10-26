@@ -34,12 +34,13 @@ var RQA_TZ = 'Asia/Manila';
 var RQA_T = { first: 4, head: 3, counter: 'A2', brain: 'G2' };
 var RQA_TK = {
   ticket: 'Ticket', time: 'Time', date: 'Date', dev: 'Dev', status: 'Status', desc: 'Description', fc: 'Freedcamp',
-  fix: 'Fix', fixOf: 'Fix Of', reworkedBy: 'Reworked By', fixes: 'Fix Tickets', type: 'Type', page: 'Page',
+  branch: 'Branch', fix: 'Fix', fixOf: 'Fix Of', reworkedBy: 'Reworked By', fixes: 'Fix Tickets', type: 'Type', page: 'Page',
   cases: 'Test Cases', qa: 'QA Result', lastTested: 'Last Tested', readyAt: 'Ready At', notes: 'Notes',
 };
-var RQA_TK_ORDER = ['ticket', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
+// Branch sits right after Freedcamp (column H): anything inserted before G would move the G2 counter.
+var RQA_TK_ORDER = ['ticket', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'branch', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
   'cases', 'qa', 'lastTested', 'readyAt', 'notes'];
-var RQA_TK_AUTO = ['fixes', 'type', 'page', 'cases', 'qa', 'lastTested', 'readyAt'];
+var RQA_TK_AUTO = ['branch', 'fixes', 'type', 'page', 'cases', 'qa', 'lastTested', 'readyAt'];
 
 // ---- Test Cases: header row 1.
 var RQA_TC = {
@@ -216,6 +217,36 @@ function rqaPageOf_(title) {
   var parts = String(title || '').split(/\s+-\s+/);
   return parts.length > 1 ? parts.slice(0, -1).join(' - ') : '';
 }
+/**
+ * A valid git branch name for a ticket: "<type>/<number>-<title>", lower case, words joined by "-".
+ *   2, "FEAT", "Added specific filters for Public View/Landing Page"
+ *   -> "feat/2-added-specific-filters-for-public-view-landing-page"
+ * Combined types ("PERF/UI") become "perf-ui"; no type gives "task". Accents are dropped, anything git does not
+ * allow (spaces, ~ ^ : ? * [ \, "..", "@{", a trailing "." or ".lock") cannot survive, and the title part is cut
+ * at a word boundary to keep the name at most 70 characters.
+ */
+function rqaBranchName_(num, type, title) {
+  var clean = function (s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  };
+  var prefix = (clean(type) || 'task') + '/' + String(num).replace(/\D/g, '');
+  var slug = clean(title), max = 70 - prefix.length - 1;
+  if (slug.length > max) slug = slug.slice(0, max).replace(/-[^-]*$/, '') || slug.slice(0, max);
+  return slug ? prefix + '-' + slug : prefix;
+}
+
+/**
+ * Sheet formula: =BRANCH_NAME(A4) turns a ticket ("2 | FEAT: Added ...") into its git branch name.
+ * @param {string} ticket The ticket text, e.g. "2 | FEAT: Added specific filters for Public View/Landing Page".
+ * @return The branch name, e.g. "feat/2-added-specific-filters-for-public-view-landing-page".
+ * @customfunction
+ */
+function BRANCH_NAME(ticket) {
+  var p = rqaParseTicket_(ticket);
+  return p ? rqaBranchName_(p.num, p.type, p.title) : '';
+}
+
 function rqaTicketNums_(v) { return String(v || '').split(/[^0-9]+/).filter(String); }
 var RQA_RETIRED = /^(closed|reworked|cancel+ed)$/i;
 
@@ -296,6 +327,7 @@ function rqaRefresh() {
     col('status', function (t) { return t.newStatus; });
     col('type', function (t) { return t.type; });
     col('page', function (t) { return t.page; });
+    col('branch', function (t) { return rqaBranchName_(t.num, t.type, t.title); });
     col('fixes', function (t) { return t.fixes.map(function (f) { return '#' + f.num; }).join(', '); });
     col('cases', function (t) { return t.cases.map(function (c) { return c.id + (c.retired ? ' (retired)' : ''); }).join(', '); });
     col('qa', rqaQaText_);
@@ -380,12 +412,21 @@ function rqaSetupTickets_(ss, st) {
     sh.getRange(2, 6).setValue('DO NOT TOUCH -->');
     sh.getRange(RQA_T.brain).setValue(start);
   }
+  // Sheets made before the Branch column existed: insert it after Freedcamp so it sits beside the ticket's links.
+  var h0 = rqaHeaders_(sh, RQA_T.head);
+  if (h0[RQA_TK.ticket] != null && h0[RQA_TK.branch] == null && h0[RQA_TK.fc] != null) {
+    sh.getRange(1, 3, 1, sh.getMaxColumns() - 2).breakApart();
+    sh.insertColumnAfter(h0[RQA_TK.fc] + 1);
+    sh.getRange(RQA_T.head, h0[RQA_TK.fc] + 2).setValue(RQA_TK.branch);
+  }
   rqaEnsureHeaders_(sh, headers, RQA_T.head);
   var h = rqaHeaders_(sh, RQA_T.head);
   sh.getRange(1, 1).setFontWeight('bold').setFontColor(RQA_NAVY);
   sh.getRange(RQA_T.counter).setFontWeight('bold').setFontSize(13).setBackground('#fff3cd')
     .setNote('Clear this cell (Delete) to log the next ticket, then type its title after the "|" in the new row.');
   sh.getRange(2, 6, 1, 2).setFontColor(RQA_GREY).setFontStyle('italic');
+  sh.getRange(RQA_T.head, h[RQA_TK.branch] + 1).setNote('Git branch name made from the ticket: type/number-title. Copy it into: git switch -c <branch>');
+  sh.getRange(1, 3, 1, sh.getMaxColumns() - 2).breakApart();
   sh.getRange(1, 3, 1, 9).merge().setValue('FORMAT:  12 | FEAT: Main page - Sub-page - Task     ·     Dev: Ready for QA when done     ·     Fix = make a fix ticket     ·     Freedcamp = send the task')
     .setFontColor(RQA_GREY).setFontStyle('italic');
   rqaHeaderStyle_(sh.getRange(RQA_T.head, 1, 1, sh.getLastColumn()));
@@ -394,7 +435,7 @@ function rqaSetupTickets_(ss, st) {
   sh.getRange(RQA_T.head, h[RQA_TK.fixOf] + 1).setNote('For a fix ticket: the failed ticket it fixes. Filled in by the Fix box.');
   sh.getRange(RQA_T.head, h[RQA_TK.status] + 1).setNote('Dev sets In Dev / Ready for QA. Failed, Fixing, Ready for Re-test and Passed follow the test cases. Reworked / Closed stay as set.');
   sh.setFrozenRows(RQA_T.head); sh.setFrozenColumns(1);
-  var widths = { ticket: 380, time: 70, date: 75, dev: 85, status: 120, desc: 240, fc: 85, fix: 45, fixOf: 60, reworkedBy: 85, fixes: 85,
+  var widths = { ticket: 380, time: 70, date: 75, dev: 85, status: 120, desc: 240, fc: 85, branch: 300, fix: 45, fixOf: 60, reworkedBy: 85, fixes: 85,
     type: 70, page: 170, cases: 160, qa: 300, lastTested: 130, readyAt: 130, notes: 220 };
   Object.keys(widths).forEach(function (k) { sh.setColumnWidth(h[RQA_TK[k]] + 1, widths[k]); });
   var rows = Math.max(sh.getMaxRows() - RQA_T.first + 1, 1);
@@ -989,7 +1030,7 @@ function rqaCreateFreedcampTask_(title, description, dev) {
   var today = Utilities.formatDate(new Date(), RQA_TZ, 'yyyy-MM-dd');
   var people = rqaFcPeople_(dev);
   var desc = (description ? description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>') + '<br><br>' : '') +
-    'Sheet ticket: ' + title.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    'Sheet ticket: ' + title.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '<br>Branch: ' + BRANCH_NAME(title);
   var data = rqaFc_('post', 'tasks', { title: title, description: desc, project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3,
     assigned_to_id: people.assignee, start_date: today, due_date: today });
   var task = (data.tasks || [])[0] || {};

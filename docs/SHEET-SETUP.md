@@ -48,7 +48,7 @@ and **Run tests**. Accounts still on a default password (1234 / 12345) must sign
 
 **Dev Tickets** (header row 3; A2 = next ticket, G2 = counter). People fill: Ticket, Dev, Status
 (In Dev / Ready for QA / Reworked / Closed), Description, Freedcamp ☐, Fix ☐, Reworked By, Notes.
-Automatic (grey headers): Fix Tickets, Type, Page, Test Cases, QA Result, Last Tested, Ready At, and the
+Automatic (grey headers): Branch, Fix Tickets, Type, Page, Test Cases, QA Result, Last Tested, Ready At, and the
 statuses Failed / Fixing / Ready for Re-test / Passed. Time and Date are stamped when the ticket is logged.
 
 **Test Cases** (header row 1). People fill (gold headers): Dev Ticket, Reference (original), Case Status,
