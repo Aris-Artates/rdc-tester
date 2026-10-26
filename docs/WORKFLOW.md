@@ -24,7 +24,7 @@ Everything lives in the **RDC8 IMS - QA & Dev Tickets** spreadsheet. Its tabs, i
 | 4. Done coding: set **Status** to **Ready for QA** | 1 pick |
 
 **Type** and **Page** fill themselves from the title (`FEAT`, `Settings - Fund Sources`).
-**Branch** fills itself with a valid git branch name, `type/number-title` in lower case:
+**Branch** (column B, right next to the ticket) fills itself with a valid git branch name, `type/number-title` in lower case:
 `2 | FEAT: Added specific filters for Public View/Landing Page` → `feat/2-added-specific-filters-for-public-view-landing-page`.
 Copy it and start the branch with `git switch -c <branch>`. It is also in the Freedcamp task's description, and
 `=BRANCH_NAME(A4)` gives the same name for any ticket text anywhere in the sheet.

@@ -30,15 +30,16 @@ var RQA_ORDER = [RQA_DASH, RQA_TICKETS, RQA_CASES, RQA_QA, RQA_DEV, RQA_LOG, RQA
 var RQA_NAVY = '#1f2a44', RQA_GOLD = '#8a6d1d', RQA_GREY = '#5f6b7a';
 var RQA_TZ = 'Asia/Manila';
 
-// ---- Dev Tickets: A2 = "<next> | " (clear it to log a ticket), counter in G2, headers row 3, tickets from row 4.
-var RQA_T = { first: 4, head: 3, counter: 'A2', brain: 'G2' };
+// ---- Dev Tickets: A2 = "<next> | " (clear it to log a ticket), headers row 3, tickets from row 4.
+// The counter is the cell right of "DO NOT TOUCH -->" in row 2 (G2 on a new sheet); it is found by that label
+// so it keeps working when columns are inserted before it.
+var RQA_T = { first: 4, head: 3, counter: 'A2', brain: 'G2', brainLabel: 'DO NOT TOUCH -->' };
 var RQA_TK = {
   ticket: 'Ticket', time: 'Time', date: 'Date', dev: 'Dev', status: 'Status', desc: 'Description', fc: 'Freedcamp',
   branch: 'Branch', fix: 'Fix', fixOf: 'Fix Of', reworkedBy: 'Reworked By', fixes: 'Fix Tickets', type: 'Type', page: 'Page',
   cases: 'Test Cases', qa: 'QA Result', lastTested: 'Last Tested', readyAt: 'Ready At', notes: 'Notes',
 };
-// Branch sits right after Freedcamp (column H): anything inserted before G would move the G2 counter.
-var RQA_TK_ORDER = ['ticket', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'branch', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
+var RQA_TK_ORDER = ['ticket', 'branch', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
   'cases', 'qa', 'lastTested', 'readyAt', 'notes'];
 var RQA_TK_AUTO = ['branch', 'fixes', 'type', 'page', 'cases', 'qa', 'lastTested', 'readyAt'];
 
@@ -163,7 +164,7 @@ function rqaNewTicket_(sh, opts) {
   var lock = LockService.getDocumentLock();
   lock.waitLock(10000);
   try {
-    var num = Number(sh.getRange(RQA_T.brain).getValue());
+    var brain = rqaBrain_(sh), num = Number(brain.getValue());
     if (!num) return 0;
     var h = rqaHeaders_(sh, RQA_T.head);
     var row = Math.max(rqaLastTicketRow_(sh, h) + 1, RQA_T.first);
@@ -175,12 +176,19 @@ function rqaNewTicket_(sh, opts) {
     set('status', RQA_S.inDev);
     if (opts && opts.dev) set('dev', opts.dev);
     if (opts && opts.fixOf) set('fixOf', Number(opts.fixOf));
-    sh.getRange(RQA_T.brain).setValue(num + 1);
+    brain.setValue(num + 1);
     sh.getRange(RQA_T.counter).setValue((num + 1) + ' | ');
     return num;
   } finally {
     lock.releaseLock();
   }
+}
+
+/** The ticket counter: the cell right of the "DO NOT TOUCH -->" label in row 2 (G2 if the label is gone). */
+function rqaBrain_(sh) {
+  var row = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 8)).getValues()[0];
+  for (var i = 0; i < row.length; i++) if (String(row[i]).trim() === RQA_T.brainLabel) return sh.getRange(2, i + 2);
+  return sh.getRange(RQA_T.brain);
 }
 
 function rqaLastTicketRow_(sh, h) {
@@ -409,24 +417,25 @@ function rqaSetupTickets_(ss, st) {
     var start = Number(rqaSetting_('First ticket number')) || 1;
     sh.getRange(1, 1).setValue('CURRENT USABLE TICKET:');
     sh.getRange(RQA_T.counter).setValue(start + ' | ');
-    sh.getRange(2, 6).setValue('DO NOT TOUCH -->');
+    sh.getRange(2, 6).setValue(RQA_T.brainLabel);
     sh.getRange(RQA_T.brain).setValue(start);
+    sh.getRange(2, 6, 1, 2).setFontColor(RQA_GREY).setFontStyle('italic'); // only on a new sheet: keep people's own styling
   }
-  // Sheets made before the Branch column existed: insert it after Freedcamp so it sits beside the ticket's links.
+  // Sheets made before the Branch column existed: insert it right next to the ticket (column B).
+  // Everything after column A moves one to the right; the counter is found by its label, so it keeps working.
   var h0 = rqaHeaders_(sh, RQA_T.head);
-  if (h0[RQA_TK.ticket] != null && h0[RQA_TK.branch] == null && h0[RQA_TK.fc] != null) {
-    sh.getRange(1, 3, 1, sh.getMaxColumns() - 2).breakApart();
-    sh.insertColumnAfter(h0[RQA_TK.fc] + 1);
-    sh.getRange(RQA_T.head, h0[RQA_TK.fc] + 2).setValue(RQA_TK.branch);
+  if (h0[RQA_TK.ticket] != null && h0[RQA_TK.branch] == null) {
+    sh.getRange(1, 2, 1, sh.getMaxColumns() - 1).breakApart();
+    sh.insertColumnAfter(h0[RQA_TK.ticket] + 1);
+    sh.getRange(RQA_T.head, h0[RQA_TK.ticket] + 2).setValue(RQA_TK.branch);
   }
   rqaEnsureHeaders_(sh, headers, RQA_T.head);
   var h = rqaHeaders_(sh, RQA_T.head);
   sh.getRange(1, 1).setFontWeight('bold').setFontColor(RQA_NAVY);
   sh.getRange(RQA_T.counter).setFontWeight('bold').setFontSize(13).setBackground('#fff3cd')
     .setNote('Clear this cell (Delete) to log the next ticket, then type its title after the "|" in the new row.');
-  sh.getRange(2, 6, 1, 2).setFontColor(RQA_GREY).setFontStyle('italic');
   sh.getRange(RQA_T.head, h[RQA_TK.branch] + 1).setNote('Git branch name made from the ticket: type/number-title. Copy it into: git switch -c <branch>');
-  sh.getRange(1, 3, 1, sh.getMaxColumns() - 2).breakApart();
+  sh.getRange(1, 2, 1, sh.getMaxColumns() - 1).breakApart();
   sh.getRange(1, 3, 1, 9).merge().setValue('FORMAT:  12 | FEAT: Main page - Sub-page - Task     ·     Dev: Ready for QA when done     ·     Fix = make a fix ticket     ·     Freedcamp = send the task')
     .setFontColor(RQA_GREY).setFontStyle('italic');
   rqaHeaderStyle_(sh.getRange(RQA_T.head, 1, 1, sh.getLastColumn()));

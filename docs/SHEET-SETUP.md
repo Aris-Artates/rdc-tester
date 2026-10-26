@@ -15,7 +15,7 @@ How the tabs are used day to day: **[WORKFLOW.md](WORKFLOW.md)**.
    *RDC QA > Set up / repair spreadsheet* can be run any time; it never deletes data.
 3. **Settings** tab: check the **Dev** list and each dev's **Freedcamp Name** (as Freedcamp shows it,
    e.g. `Jondie Mar G.`). If RDC tickets should continue the team's shared numbering, put the next number in
-   **Dev Tickets!G2** and `N | ` in **A2** before logging the first ticket.
+   the cell right of **DO NOT TOUCH -->** on **Dev Tickets** row 2 and `N | ` in **A2** before logging the first ticket.
 4. **Freedcamp** (optional, recommended): **each dev** connects their own key once, with
    *RDC QA > Connect Freedcamp…* (Dev name, API key, API secret). Steps, and where the key is in Freedcamp:
    [WORKFLOW.md > Connecting: once per dev](WORKFLOW.md#connecting-once-per-dev). Keys stay private to each
@@ -46,7 +46,7 @@ and **Run tests**. Accounts still on a default password (1234 / 12345) must sign
 
 ## Columns
 
-**Dev Tickets** (header row 3; A2 = next ticket, G2 = counter). People fill: Ticket, Dev, Status
+**Dev Tickets** (header row 3; A2 = next ticket; the counter is right of "DO NOT TOUCH -->" in row 2). People fill: Ticket, Dev, Status
 (In Dev / Ready for QA / Reworked / Closed), Description, Freedcamp ☐, Fix ☐, Reworked By, Notes.
 Automatic (grey headers): Branch, Fix Tickets, Type, Page, Test Cases, QA Result, Last Tested, Ready At, and the
 statuses Failed / Fixing / Ready for Re-test / Passed. Time and Date are stamped when the ticket is logged.
