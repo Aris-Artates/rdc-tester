@@ -158,7 +158,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const openBrowser = link => { if (!process.argv.includes('--no-open')) spawn('cmd', ['/c', 'start', '', link], { detached: true, stdio: 'ignore' }).unref(); };
+// --retest (the Windows startup script): the page opens with a retest of the latest Fail / Blocked tests running.
+const pageOf = link => link + (process.argv.includes('--retest') ? '/?retest=1' : '');
+const openBrowser = link => { if (!process.argv.includes('--no-open')) spawn('cmd', ['/c', 'start', '', pageOf(link)], { detached: true, stdio: 'ignore' }).unref(); };
 
 server.on('error', async e => {
   if (e.code !== 'EADDRINUSE') throw e;

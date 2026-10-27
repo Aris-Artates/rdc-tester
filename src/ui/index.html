@@ -260,7 +260,16 @@ $('#save').onclick = async () => {
 $('#saveRaw').onclick = async () => { await fetch('/api/env', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: $('#raw').value }) }); loadEnv(); };
 $('#copyEnv').onclick = () => navigator.clipboard.writeText($('#raw').value);
 
-loadCatalog(); loadEnv();
+// Opened with ?retest=1 (Windows startup): rerun what failed or was blocked last time and write it to the sheet.
+Promise.all([loadCatalog(), loadEnv()]).then(() => {
+  if (!new URLSearchParams(location.search).has('retest')) return;
+  history.replaceState(null, '', location.pathname); // a reload must not start another run
+  document.querySelector('nav button[data-t=run]').click();
+  $('#status').value = 'Fail,Blocked';
+  $('#push').checked = true;
+  renderCmd();
+  start('run', runArgs(false), 'Retest (startup)');
+});
 </script>
 </body>
 </html>

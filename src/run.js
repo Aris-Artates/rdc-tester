@@ -51,6 +51,20 @@ for (const f of ['only', 'module', 'kind', 'role', 'status', 'ticket']) {
 }
 const only = list(opt('only')), modules = list(opt('module')), kinds = list(opt('kind')), roles = list(opt('role')), statuses = list(opt('status'));
 const tickets = list(opt('ticket'))?.map(s => s.replace(/\D/g, '')).filter(Boolean);
+// Retest without the sheet: take each test's latest result from the newest local run that has it.
+const localLatest = new Map();
+if (statuses && !sheet.size) {
+  const runs = fs.existsSync(path.join(ROOT, 'results')) ? fs.readdirSync(path.join(ROOT, 'results')).filter(d => d.startsWith('run-')).sort().reverse() : [];
+  for (const d of runs) {
+    const file = path.join(ROOT, 'results', d, 'results.csv');
+    if (!fs.existsSync(file)) continue;
+    for (const line of fs.readFileSync(file, 'utf8').replace(/^﻿/, '').split(/\r?\n/).slice(1)) {
+      const [id, , , , result] = (line.match(/"((?:[^"]|"")*)"/g) || []).map(c => c.slice(1, -1));
+      if (id && result && !localLatest.has(id)) localLatest.set(id, { latest: result });
+    }
+  }
+  console.log(`Retest without the sheet: latest results of ${localLatest.size} tests taken from ${runs.length} local runs.`);
+}
 if (tickets && !sheet.size) { console.log('--ticket needs the sheet (the Dev Ticket links live there).'); process.exit(1); }
 const linkedTo = row => String(row?.devTicket || '').split(/\D+/).filter(Boolean);
 const cancelled = [], notInSheet = [];
@@ -60,7 +74,8 @@ const selected = catalog.filter(t => {
   if (kinds && !kinds.includes(t.kind.toLowerCase())) return false;
   if (roles && !roles.includes(t.role)) return false;
   const row = sheet.get(t.id);
-  if (statuses && !statuses.includes(String(row?.latest || 'not started').toLowerCase())) return false;
+  const latest = (row || localLatest.get(t.id))?.latest;
+  if (statuses && !statuses.includes(String(latest || 'not started').toLowerCase())) return false;
   if (tickets && !linkedTo(row).some(n => tickets.includes(n))) return false;
   if (isRetired(row)) { cancelled.push(t.id); return false; }
   if (sheet.size && !row) notInSheet.push(t.id);

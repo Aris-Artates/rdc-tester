@@ -23,7 +23,7 @@ if not exist .env (
 )
 
 echo Starting the RDC Checker. Keep this window open while you use it; close it to stop.
-node src\ui\server.js
+node src\ui\server.js %*
 pause
 exit /b 0
 
