@@ -4,7 +4,7 @@
  *   --only PUB-001,ACO-002     only these TC IDs
  *   --module "Monitoring,Settings"  only these modules
  *   --kind Logic,Data          only these kinds (Functional, Logic, Data, Access, Pending)
- *   --role public|admin|member only tests that use this account
+ *   --role admin,agency_head  only tests that use these accounts (see ROLES in src/catalog.js)
  *   --status Fail,Blocked      only tests whose LATEST sheet result is one of these (retest)
  *   --ticket 12,15             only tests linked to these dev tickets (sheet column "Dev Ticket")
  *   --push                     write results to the sheet ("Check Log" + "QA Tests")
@@ -18,8 +18,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { config, accountFor, ROOT } from './config.js';
-import { loadCatalog } from './catalog.js';
+import { config, accountFor, originalAccountFor, ROOT } from './config.js';
+import { loadCatalog, ROLES } from './catalog.js';
+import { loginOriginal } from './original.js';
 import { loadSheetRows, sheetConfigured, isRetired, pushResults, writeCsv } from './sheet.js';
 import { login, pathOf } from './app.js';
 import { makeT, Outcome } from './harness.js';
@@ -67,7 +68,7 @@ const selected = catalog.filter(t => {
 });
 
 // public first, then each account; tests marked `last` (log out) end their group.
-const order = ['public', 'admin', 'member'];
+const order = ROLES;
 const groups = order.map(role => ({ role, tests: selected.filter(t => t.role === role).sort((a, b) => !!a.last - !!b.last) })).filter(g => g.tests.length);
 
 console.log(`\n${selected.length} tests to run on ${config.appUrl}.`);
@@ -136,6 +137,7 @@ for (const { role, tests } of groups) {
     continue;
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  let originalContext = null;
   const page = await context.newPage();
   page.setDefaultTimeout(config.pageTimeoutMs);
   try {
@@ -149,15 +151,34 @@ for (const { role, tests } of groups) {
         continue;
       }
     }
+    // Parity tests also need the same role on the original site (read only).
+    let originalPage = null, originalProblem = '';
+    if (tests.some(t => t.original)) {
+      const origAccount = role === 'public' ? null : originalAccountFor(role);
+      if (role !== 'public' && !origAccount) originalProblem = `No ORIGINAL_ACCOUNT_${role.toUpperCase()} or ACCOUNT_${role.toUpperCase()} in .env`;
+      else {
+        originalContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        originalPage = await originalContext.newPage();
+        originalPage.setDefaultTimeout(config.pageTimeoutMs);
+        if (origAccount) {
+          const r = await loginOriginal(originalPage, origAccount);
+          console.log('  ' + r.message);
+          if (!r.ok) { originalProblem = r.message; originalPage = null; }
+        }
+      }
+    }
     for (const test of tests) {
-      let outcome = await runOne(makeT({ page, test, sheetRow: sheet.get(test.id) }), test);
+      if (test.original && !originalPage) { await record(null, test, new Outcome('Blocked', 'Original site: ' + originalProblem)); continue; }
+      const mk = () => makeT({ page, test, sheetRow: sheet.get(test.id), originalPage: test.original ? originalPage : null });
+      let outcome = await runOne(mk(), test);
       // Session dropped mid-run: sign in again once and retry, so one expiry doesn't fail the rest.
       if (outcome.result === 'Fail' && account && !test.last && pathOf(page.url()) === '/' && (await login(page, account)).ok) {
-        outcome = await runOne(makeT({ page, test, sheetRow: sheet.get(test.id) }), test);
+        outcome = await runOne(mk(), test);
       }
       await record(page, test, outcome);
     }
   } finally {
+    await originalContext?.close().catch(() => {});
     await context.close().catch(() => {});
     await flush(role);
   }

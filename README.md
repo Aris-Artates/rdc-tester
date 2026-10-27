@@ -1,12 +1,18 @@
 # RDC Checker (rdc-tester)
 
-Checks the **RDC8 IMS Vercel deployment** (`https://rdc8ims.vercel.app`) in a real browser and writes
-the results into the QA Google Sheet, the same way a tester would. No AI runs during a check: every
-test is a fixed rule in `src/tests/`.
+Checks the **RDC8 IMS Vercel deployment** (`https://evims.vercel.app`, set in `APP_URL_VERCEL`) in a real
+browser and writes the results into the QA Google Sheet, the same way a tester would. No AI runs during a
+check: every test is a fixed rule in `src/tests/`.
 
-The original WordPress site (`https://evims.rdc8ims.online`) is **never tested**. It is only the
-reference: QA reads a figure there once and types it in the sheet, and the checker compares Vercel
-against it.
+The original WordPress site (`https://evims.rdc8ims.online`) is the **reference**, never changed:
+- **Parity tests** (`PAR-`, `src/tests/parity.js`) sign in to both sites with the same role and compare what
+  each page offers: table columns, filters and their choices, action buttons, dialog columns and the top menus.
+  They do not compare the data itself: the two databases have drifted since the migration.
+- **Data tests** (`DATA-`) compare a figure with the value QA typed in the sheet's Reference column.
+
+The tasks on Freedcamp have their own scripts (`FC-`, `src/tests/freedcamp.js`), one or more per task, run
+with the role the task is about (RDC Admin, Agency Head, Approving Officer, Chief Reviewer). They open
+decisions up to the confirmation step and never send them.
 
 ## What it checks
 

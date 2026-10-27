@@ -20,6 +20,15 @@ it is tested (Case Status) and for the original site's values (Reference).
 | `src/tests/features.js` | Completed features + calculations | `MON-`, `ACO-`, `SET-`, `USR-`, `CLR-`, `RES-`, `PRJ-`, `CPW-` |
 | `src/tests/data.js` | Vercel value vs original value | `DATA-` |
 | `src/tests/pending.js` | On the original, not on Vercel yet | `PEND-` |
+| `src/tests/parity.js` | Same page on the original and Vercel offers the same columns, filters, buttons, dialogs, menus | `PAR-` |
+| `src/tests/freedcamp.js` | The Freedcamp tasks / dev tickets, per role | `FC-` |
+
+**A parity test** is one line: `pair('PAR-015', 'Reports', 'Annex A columns', 'admin', { original: '/rdc_dashboard/x.php',
+vercel: '/reports/x', columns: true, filters: true })`. Other checks: `buttons: true` (or a list of button names),
+`dialog: { button: 'Vercel button', title: 'Original modal title' }`, `menu: true`, and `alias: { 'Original wording':
+'Vercel wording' }` when a label was renamed on purpose. It gets `original: true`, so the runner signs the same role in
+to the original site (`ORIGINAL_ACCOUNT_<ROLE>`, else `ACCOUNT_<ROLE>`). Roles are listed in `ROLES` in
+`src/catalog.js`; each needs `ACCOUNT_<ROLE>` in `.env`.
 
 Use the next free number of the prefix (`npm run qa:list` shows all IDs). A new area can get its own
 file, e.g. `src/tests/reports.js` with prefix `RPT-`: every `.js` file in `src/tests/` is loaded

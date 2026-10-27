@@ -8,7 +8,8 @@ import { pathToFileURL } from 'node:url';
 import { ROOT } from './config.js';
 
 export const KINDS = ['Functional', 'Logic', 'Data', 'Access', 'Pending'];
-export const ROLES = ['public', 'admin', 'member'];
+// Each role signs in with ACCOUNT_<ROLE> (and ORIGINAL_ACCOUNT_<ROLE> on the original site, for parity tests).
+export const ROLES = ['public', 'admin', 'member', 'agency_head', 'approving_officer', 'chief_reviewer'];
 
 export async function loadCatalog() {
   const dir = path.join(ROOT, 'src', 'tests');

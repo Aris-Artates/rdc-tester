@@ -18,9 +18,11 @@ export class Outcome extends Error {
 
 export const RESULTS = ['Pass', 'Fail', 'Blocked', 'Not Implemented'];
 
-export function makeT({ page, test, sheetRow }) {
+export function makeT({ page, test, sheetRow, originalPage = null }) {
   const t = {
     page,
+    /** For tests with `original: true`: the same role signed in to the original WordPress site (read only). */
+    original: originalPage ? { page: originalPage } : null,
     config,
     app,
     test,

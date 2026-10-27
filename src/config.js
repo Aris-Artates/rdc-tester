@@ -19,15 +19,26 @@ export const config = {
   settleMs: Number(env('SETTLE_MS', '2500')),
   pageTimeoutMs: Number(env('PAGE_TIMEOUT_MS', '30000')),
   // The host lives only in .env, never in the tests: tests use paths ("/projects").
-  appUrl: stripSlash(env('APP_URL_VERCEL', 'https://rdc8ims.vercel.app')),
+  appUrl: stripSlash(env('APP_URL_VERCEL', 'https://evims.vercel.app')),
   originalUrl: stripSlash(env('APP_URL_ORIGINAL', 'https://evims.rdc8ims.online')),
   allowWrite: bool('ALLOW_WRITE_TESTS'),
 };
 
-/** { username, password } for a role ("admin" -> ACCOUNT_ADMIN), or null when not set. */
-export function accountFor(role) {
-  const raw = env('ACCOUNT_' + String(role).toUpperCase().replace(/[^A-Z0-9]+/g, '_'));
+const parseAccount = raw => {
   const i = raw.indexOf(':');
-  if (i < 1) return null;
-  return { username: raw.slice(0, i), password: raw.slice(i + 1) };
+  return i < 1 ? null : { username: raw.slice(0, i), password: raw.slice(i + 1) };
+};
+const roleKey = role => String(role).toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+
+/** { username, password } for a role on Vercel ("admin" -> ACCOUNT_ADMIN), or null when not set. */
+export function accountFor(role) {
+  return parseAccount(env('ACCOUNT_' + roleKey(role)));
+}
+
+/**
+ * The same role's account on the original WordPress site (ORIGINAL_ACCOUNT_ADMIN). Imported WordPress
+ * accounts usually share their sign-in, so ACCOUNT_<ROLE> is used when no separate one is set.
+ */
+export function originalAccountFor(role) {
+  return parseAccount(env('ORIGINAL_ACCOUNT_' + roleKey(role))) || accountFor(role);
 }
