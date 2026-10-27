@@ -35,10 +35,14 @@ export function accountFor(role) {
   return parseAccount(env('ACCOUNT_' + roleKey(role)));
 }
 
+/** "Use different accounts" (ORIGINAL_SEPARATE_ACCOUNTS): the original site has its own accounts. */
+export const separateOriginalAccounts = () => bool('ORIGINAL_SEPARATE_ACCOUNTS');
+
 /**
- * The same role's account on the original WordPress site (ORIGINAL_ACCOUNT_ADMIN). Imported WordPress
- * accounts usually share their sign-in, so ACCOUNT_<ROLE> is used when no separate one is set.
+ * The same role's account on the original WordPress site (ORIGINAL_ACCOUNT_ADMIN). With "Use different
+ * accounts" ticked only that one is used; otherwise ACCOUNT_<ROLE> is used when no separate one is set.
  */
 export function originalAccountFor(role) {
-  return parseAccount(env('ORIGINAL_ACCOUNT_' + roleKey(role))) || accountFor(role);
+  const own = parseAccount(env('ORIGINAL_ACCOUNT_' + roleKey(role)));
+  return separateOriginalAccounts() ? own : own || accountFor(role);
 }

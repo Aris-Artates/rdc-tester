@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { config, accountFor, originalAccountFor, ROOT } from './config.js';
+import { config, accountFor, originalAccountFor, separateOriginalAccounts, ROOT } from './config.js';
 import { loadCatalog, ROLES } from './catalog.js';
 import { loginOriginal } from './original.js';
 import { loadSheetRows, sheetConfigured, isRetired, pushResults, writeCsv } from './sheet.js';
@@ -155,7 +155,11 @@ for (const { role, tests } of groups) {
     let originalPage = null, originalProblem = '';
     if (tests.some(t => t.original)) {
       const origAccount = role === 'public' ? null : originalAccountFor(role);
-      if (role !== 'public' && !origAccount) originalProblem = `No ORIGINAL_ACCOUNT_${role.toUpperCase()} or ACCOUNT_${role.toUpperCase()} in .env`;
+      if (role !== 'public' && !origAccount) {
+        originalProblem = separateOriginalAccounts()
+          ? `"Use different accounts" is on but no ORIGINAL_ACCOUNT_${role.toUpperCase()} is set (Settings > Original-site accounts)`
+          : `No ORIGINAL_ACCOUNT_${role.toUpperCase()} or ACCOUNT_${role.toUpperCase()} in .env`;
+      }
       else {
         originalContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
         originalPage = await originalContext.newPage();

@@ -234,17 +234,26 @@ async function loadEnv() {
   const r = await fetch('/api/env').then(r => r.json());
   ENV = r.values;
   let group = '', html = '';
+  const on = v => /^(1|true|yes|on)$/i.test(String(v || ''));
   for (const f of r.schema) {
     if (f.group !== group) { group = f.group; html += `<h3 style="grid-column:1/-1">${esc(group)}</h3>`; }
-    html += `<label for="f-${f.key}">${esc(f.label)}</label><input id="f-${f.key}" data-key="${f.key}" type="${f.secret ? 'password' : 'text'}" placeholder="${esc(f.placeholder || '')}" value="${esc(ENV[f.key] || '')}"><div class="help muted">${esc(f.help)}</div>`;
+    // A field with showIf is only shown while that checkbox is ticked.
+    const show = f.showIf ? ` data-show-if="${f.showIf}"` : '';
+    const input = f.type === 'checkbox'
+      ? `<label style="justify-self:start"><input id="f-${f.key}" data-key="${f.key}" data-checkbox type="checkbox"${on(ENV[f.key]) ? ' checked' : ''}> Yes</label>`
+      : `<input id="f-${f.key}" data-key="${f.key}" type="${f.secret ? 'password' : 'text'}" placeholder="${esc(f.placeholder || '')}" value="${esc(ENV[f.key] || '')}">`;
+    html += `<label for="f-${f.key}"${show}>${esc(f.label)}</label><div${show}>${input}</div><div class="help muted"${show}>${esc(f.help)}</div>`;
   }
   $('#form').innerHTML = `<div class="grid">${html}</div>`;
+  const toggle = () => document.querySelectorAll('#form [data-show-if]').forEach(e => { e.style.display = $('#f-' + e.dataset.showIf)?.checked ? '' : 'none'; });
+  document.querySelectorAll('#form input[data-checkbox]').forEach(c => { c.onchange = toggle; });
+  toggle();
   $('#raw').value = await fetch('/api/env/format').then(r => r.text());
   if (ENV.SHEET_URL) $('#openSheet').href = ENV.SHEET_URL; else $('#openSheet').removeAttribute('href');
 }
 $('#save').onclick = async () => {
   const values = { ...ENV };
-  document.querySelectorAll('#form input[data-key]').forEach(i => { values[i.dataset.key] = i.value.trim(); });
+  document.querySelectorAll('#form input[data-key]').forEach(i => { values[i.dataset.key] = 'checkbox' in i.dataset ? String(i.checked) : i.value.trim(); });
   await fetch('/api/env', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ values }) });
   $('#saved').textContent = 'Saved.'; setTimeout(() => $('#saved').textContent = '', 2500); loadEnv();
 };

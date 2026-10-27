@@ -26,8 +26,11 @@ export const SCHEMA = [
   { group: 'Test accounts', key: 'ACCOUNT_AGENCY_HEAD', label: 'agency_head', help: 'username:password of an Agency Head (e.g. dev_rdc_agency_head).', secret: true },
   { group: 'Test accounts', key: 'ACCOUNT_APPROVING_OFFICER', label: 'approving_officer', help: 'username:password of an RDC Approving Officer.', secret: true },
   { group: 'Test accounts', key: 'ACCOUNT_CHIEF_REVIEWER', label: 'chief_reviewer', help: 'username:password of a DBM / CHED / NEDA Chief Reviewer.', secret: true },
-  { group: 'Original-site accounts', key: 'ORIGINAL_ACCOUNT_ADMIN', label: 'admin on the original', help: 'Only if RDC Admin signs in differently on the original site; empty = same as admin.', secret: true },
-  { group: 'Original-site accounts', key: 'ORIGINAL_ACCOUNT_AGENCY_HEAD', label: 'agency_head on the original', help: 'Only if it differs from agency_head.', secret: true },
+  { group: 'Original-site accounts', key: 'ORIGINAL_SEPARATE_ACCOUNTS', type: 'checkbox', label: 'Use different accounts', help: 'Ticked: parity tests sign in to the original site with the accounts below, never the Vercel ones. Unticked: the Vercel accounts above are used there too.' },
+  ...['admin', 'member', 'agency_head', 'approving_officer', 'chief_reviewer'].map(role => ({
+    group: 'Original-site accounts', key: `ORIGINAL_ACCOUNT_${role.toUpperCase()}`, label: `${role} on the original`, showIf: 'ORIGINAL_SEPARATE_ACCOUNTS',
+    help: `username:password of the ${role} account on the original site.`, secret: true,
+  })),
   { group: 'Safety', key: 'ALLOW_WRITE_TESTS', label: 'Allow write tests', help: 'true = run tests that add then delete QA-AUTO records.', placeholder: 'false' },
   { group: 'Timing', key: 'SETTLE_MS', label: 'Settle time (ms)', help: 'How long a page must stay unchanged before it counts as loaded.', placeholder: '2500' },
   { group: 'Timing', key: 'PAGE_TIMEOUT_MS', label: 'Page timeout (ms)', help: 'Max wait for one page.', placeholder: '30000' },
