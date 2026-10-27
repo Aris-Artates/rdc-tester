@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { config, accountFor, originalAccountFor, separateOriginalAccounts, ROOT } from './config.js';
+import { config, accountFor, originalAccountFor, separateOriginalAccounts, newKey, legacyKey, ROOT } from './config.js';
 import { loadCatalog, ROLES } from './catalog.js';
 import { loginOriginal } from './original.js';
 import { loadSheetRows, sheetConfigured, isRetired, pushResults, writeCsv } from './sheet.js';
@@ -90,7 +90,7 @@ console.log(`\n${selected.length} tests to run on ${config.appUrl}.`);
 if (tickets) console.log(`  Linked to dev ticket ${tickets.join(', ')}: ${selected.map(t => t.id).join(', ') || 'none (fill the Dev Ticket column in the sheet)'}`);
 if (cancelled.length) console.log(`  Skipped (case Closed / Reworked): ${cancelled.join(', ')}`);
 if (notInSheet.length) console.log(`  Not in the sheet yet (run "npm run sync-sheet"; their results are not pushed): ${notInSheet.join(', ')}`);
-for (const g of groups) console.log(`  ${g.role.padEnd(7)} ${g.tests.length} tests${g.role !== 'public' && !accountFor(g.role) ? `  (no ACCOUNT_${g.role.toUpperCase()} in .env: they will be Blocked)` : ''}`);
+for (const g of groups) console.log(`  ${g.role.padEnd(7)} ${g.tests.length} tests${g.role !== 'public' && !accountFor(g.role) ? `  (no ${newKey(g.role)} in .env: they will be Blocked)` : ''}`);
 if (opt('dry')) { for (const g of groups) for (const t of g.tests) console.log(`    ${t.id} ${t.title}`); process.exit(0); }
 
 // ---- run
@@ -147,7 +147,7 @@ for (const { role, tests } of groups) {
   console.log(`\n== ${role}`);
   const account = role === 'public' ? null : accountFor(role);
   if (role !== 'public' && !account) {
-    for (const test of tests) await record(null, test, new Outcome('Blocked', `No ACCOUNT_${role.toUpperCase()} in .env`));
+    for (const test of tests) await record(null, test, new Outcome('Blocked', `No ${newKey(role)} in .env`));
     await flush(role);
     continue;
   }
@@ -172,8 +172,8 @@ for (const { role, tests } of groups) {
       const origAccount = role === 'public' ? null : originalAccountFor(role);
       if (role !== 'public' && !origAccount) {
         originalProblem = separateOriginalAccounts()
-          ? `"Use different accounts" is on but no ORIGINAL_ACCOUNT_${role.toUpperCase()} is set (Settings > Original-site accounts)`
-          : `No ORIGINAL_ACCOUNT_${role.toUpperCase()} or ACCOUNT_${role.toUpperCase()} in .env`;
+          ? `"Use different accounts" is on but no ${legacyKey(role)} is set (Settings > Original-site accounts)`
+          : `No ${legacyKey(role)} or ${newKey(role)} in .env`;
       }
       else {
         originalContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });

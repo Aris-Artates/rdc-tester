@@ -1,7 +1,7 @@
 /**
  * The tasks on Freedcamp (RDC8-IMS New) and their dev tickets, checked on Vercel. Read only: decisions
  * (approve, endorse, lock, status changes) are opened up to their confirmation step and never sent.
- * Roles: ACCOUNT_ADMIN (RDC Admin), ACCOUNT_AGENCY_HEAD, ACCOUNT_APPROVING_OFFICER, ACCOUNT_CHIEF_REVIEWER.
+ * Roles: NEW_RDC_ADMIN, NEW_AGENCY_HEAD, NEW_RDC_APPROVING_OFFICER, NEW_DBM_CHIEF_REVIEWER (see src/roles.js).
  */
 import { readTable, num, showingEntries, toastText } from '../app.js';
 import { firstTable } from './_helpers.js';

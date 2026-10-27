@@ -92,7 +92,7 @@ export async function topMenu(page, site) {
  */
 export async function runParity(t, spec) {
   const o = t.original;
-  if (!o) t.blocked('No original-site session (set ORIGINAL_ACCOUNT_<ROLE> or ACCOUNT_<ROLE> in .env)');
+  if (!o) t.blocked('No original-site session (set LEGACY_<ROLE> in .env)');
   const r = await openOriginal(o.page, spec.original);
   if (r.state !== 'allowed') t.blocked(`Original ${spec.original}: ${r.detail}`);
   await t.open(spec.vercel);

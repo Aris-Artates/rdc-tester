@@ -15,21 +15,27 @@ export async function loginOriginal(page, account) {
   if (!(await form.count())) return { ok: true, message: 'Original site: already signed in' };
   await form.locator('#username').fill(account.username);
   await form.locator('#password').fill(account.password);
+  // The site is behind Cloudflare: a 403 on the login POST means its bot protection refused the checker.
+  let blocked = 0;
+  const onResponse = r => { if (r.request().method() === 'POST' && /wp-login\.php|admin-ajax\.php/.test(r.url()) && r.status() === 403) blocked = r.status(); };
+  page.on('response', onResponse);
   await form.locator('#wp-submit').click();
   // The form signs in by AJAX, then reloads or redirects. Wait for that, then prove the session by opening
   // a dashboard page (no login form = signed in), whatever page WordPress chose to land on.
   const deadline = Date.now() + config.pageTimeoutMs * 2;
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && !blocked) {
     if (new URL(page.url()).pathname !== '/' || !(await form.isVisible().catch(() => false))) break;
     await new Promise(r => setTimeout(r, 500));
   }
+  page.off('response', onResponse);
+  if (blocked) return { ok: false, message: `Original site: Cloudflare refused the automated sign-in (HTTP ${blocked} on the login). The site admin needs a Cloudflare rule that lets the checker through; the account itself was not rejected.` };
   // The form's last line is its status ("Signing in...", or the error WordPress sent back).
   const status = (await form.innerText().catch(() => '')).split('\n').map(l => l.trim()).filter(Boolean).pop() || '';
   await settle(page);
   const check = await openOriginal(page, '/rdc_dashboard/rdp_chapters.php');
   if (check.state === 'allowed') return { ok: true, message: 'Original site: signed in as ' + account.username };
   const why = /signing in/i.test(status) ? 'the login form never finished ("Signing in...")' : `the login form says "${status}"`;
-  return { ok: false, message: `Original site did not sign in "${account.username}": ${why}. Use this role's original-site account in ORIGINAL_ACCOUNT_<ROLE> in .env.` };
+  return { ok: false, message: `Original site did not sign in "${account.username}": ${why}. Put this role's original-site account in LEGACY_<ROLE> in .env.` };
 }
 
 /** Open an original-site path. Returns { state: 'allowed' | 'logged-out' | 'crashed', detail }. */

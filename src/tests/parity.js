@@ -1,10 +1,10 @@
 /**
  * Original vs Vercel, one to one: the same page on both sites must offer the same columns, filters,
  * buttons and dialogs (see src/parity.js). Each test signs in with the same role on both sites
- * (ACCOUNT_<ROLE>, and ORIGINAL_ACCOUNT_<ROLE> when the original sign-in differs). Read only.
+ * (NEW_<ROLE> on Vercel, LEGACY_<ROLE> on the original site; see src/roles.js). Read only.
  */
 import { runParity } from '../parity.js';
-import { ROLE_INFO } from '../catalog.js';
+import { ROLE_INFO } from '../roles.js';
 
 const OFFICE = 'Department of Finance - BTr Borongan Eastern Samar Provincial Office';
 const office = {
@@ -49,9 +49,8 @@ export default [
     { original: '/rdc_dashboard/agency.php', vercel: '/accounts/agencies', columns: true }),
   pair('PAR-014', 'Projects', 'Projects list columns and filters', 'admin',
     { original: '/rdc_dashboard/project_proposals.php', vercel: '/projects', columns: true, filters: true }),
-  // Every other role's top menus. "/" lands each role on its own dashboard on the original site;
-  // /profile is open to every member on Vercel. PAR-001 / PAR-002 cover RDC Admin and Agency Head.
-  ...ROLE_INFO.filter(r => !['public', 'admin', 'member', 'agency_head'].includes(r.role)).map((r, i) =>
-    pair(`PAR-${String(15 + i).padStart(3, '0')}`, 'Navigation', `top menus for ${r.name}`, r.role,
-      { original: '/', vercel: '/profile', menu: true })),
+  // Every other role's top menus (fixed IDs in src/roles.js). "/" lands each role on its own dashboard on the
+  // original site; /profile is open to every member on Vercel. PAR-001 / PAR-002 cover RDC Admin and Agency Head.
+  ...ROLE_INFO.filter(r => r.menu && !['PAR-001', 'PAR-002'].includes(r.menu)).map(r =>
+    pair(r.menu, 'Navigation', `top menus for ${r.name}`, r.role, { original: '/', vercel: '/profile', menu: true })),
 ];

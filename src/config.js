@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { roleInfo } from './roles.js';
 
 // Always read the .env next to the project, wherever the tool is started from.
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -28,21 +29,26 @@ const parseAccount = raw => {
   const i = raw.indexOf(':');
   return i < 1 ? null : { username: raw.slice(0, i), password: raw.slice(i + 1) };
 };
-const roleKey = role => String(role).toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+const oldKey = role => String(role).toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+const keyOf = role => roleInfo(role)?.key || oldKey(role);
 
-/** { username, password } for a role on Vercel ("admin" -> ACCOUNT_ADMIN), or null when not set. */
+/** The .env names of a role's accounts: NEW_<ROLE> on Vercel, LEGACY_<ROLE> on the original site. */
+export const newKey = role => 'NEW_' + keyOf(role);
+export const legacyKey = role => 'LEGACY_' + keyOf(role);
+
+/** { username, password } for a role on Vercel (NEW_RDC_ADMIN), or null when not set. Old ACCOUNT_<ROLE> still read. */
 export function accountFor(role) {
-  return parseAccount(env('ACCOUNT_' + roleKey(role)));
+  return parseAccount(env(newKey(role)) || env('ACCOUNT_' + oldKey(role)));
 }
 
 /** "Use different accounts" (ORIGINAL_SEPARATE_ACCOUNTS): the original site has its own accounts. */
 export const separateOriginalAccounts = () => bool('ORIGINAL_SEPARATE_ACCOUNTS');
 
 /**
- * The same role's account on the original WordPress site (ORIGINAL_ACCOUNT_ADMIN). With "Use different
- * accounts" ticked only that one is used; otherwise ACCOUNT_<ROLE> is used when no separate one is set.
+ * The same role's account on the original WordPress site (LEGACY_RDC_ADMIN; old ORIGINAL_ACCOUNT_<ROLE> still read).
+ * With "Use different accounts" ticked only that one is used; otherwise the Vercel account is used when it is empty.
  */
 export function originalAccountFor(role) {
-  const own = parseAccount(env('ORIGINAL_ACCOUNT_' + roleKey(role)));
+  const own = parseAccount(env(legacyKey(role)) || env('ORIGINAL_ACCOUNT_' + oldKey(role)));
   return separateOriginalAccounts() ? own : own || accountFor(role);
 }

@@ -80,7 +80,7 @@ export default [
         if (inMenu && !opens) bad.push(`${key}: in the menu but opening it gives ${r.state} (${r.detail})`);
         if (!inMenu && opens) bad.push(`${key}: hidden from the menu but opens directly`);
       }
-      t.check(refused.length, 'This account can open every section; use an account with limited permissions for ACCOUNT_MEMBER');
+      t.check(refused.length, 'This account can open every section; use an account with limited permissions for NEW_MEMBER');
       t.check(!bad.length, bad.join(' | '));
       return t.pass(`Opens: ${allowed.join(', ')}. Refused: ${refused.join(', ')}.`);
     },
