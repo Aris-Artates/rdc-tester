@@ -7,6 +7,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { ROOT } from '../config.js';
+import { ROLE_INFO } from '../catalog.js';
+
+const SIGNED_IN = ROLE_INFO.filter(r => r.role !== 'public');
 
 const portArg = process.argv.indexOf('--port');
 const PORT = Number((portArg > 0 && process.argv[portArg + 1]) || process.env.QA_UI_PORT || 4417);
@@ -21,15 +24,15 @@ export const SCHEMA = [
   { group: 'Sheet connection', key: 'CHECKER_NAME', label: 'Checker name', help: 'Name written in the Check Log. Add it to the Team tab.', placeholder: 'RDC QA Bot' },
   { group: 'App addresses', key: 'APP_URL_VERCEL', label: 'Vercel app URL (tested)', help: 'Base URL, no trailing slash.', placeholder: 'https://evims.vercel.app' },
   { group: 'App addresses', key: 'APP_URL_ORIGINAL', label: 'Original site URL (reference)', help: 'Parity tests (PAR-) sign in here read-only and compare it with Vercel.', placeholder: 'https://evims.rdc8ims.online' },
-  { group: 'Test accounts', key: 'ACCOUNT_ADMIN', label: 'admin', help: 'username:password of an RDC Admin account (e.g. dev_rdc_admin).', secret: true },
-  { group: 'Test accounts', key: 'ACCOUNT_MEMBER', label: 'member', help: 'username:password of a member WITHOUT access to every section.', secret: true },
-  { group: 'Test accounts', key: 'ACCOUNT_AGENCY_HEAD', label: 'agency_head', help: 'username:password of an Agency Head (e.g. dev_rdc_agency_head).', secret: true },
-  { group: 'Test accounts', key: 'ACCOUNT_APPROVING_OFFICER', label: 'approving_officer', help: 'username:password of an RDC Approving Officer.', secret: true },
-  { group: 'Test accounts', key: 'ACCOUNT_CHIEF_REVIEWER', label: 'chief_reviewer', help: 'username:password of a DBM / CHED / NEDA Chief Reviewer.', secret: true },
+  // One Vercel and one original-site account per role (src/catalog.js ROLE_INFO); the help names the test username.
+  ...SIGNED_IN.map(r => ({
+    group: 'Test accounts (Vercel)', key: `ACCOUNT_${r.role.toUpperCase()}`, label: `${r.role} - ${r.name}`, secret: true,
+    help: `username:password on Vercel${r.vercel ? `, e.g. ${r.vercel}` : ['admin', 'member'].includes(r.role) ? '' : ' (no Vercel test account listed yet; empty = its tests are Blocked)'}.`,
+  })),
   { group: 'Original-site accounts', key: 'ORIGINAL_SEPARATE_ACCOUNTS', type: 'checkbox', label: 'Use different accounts', help: 'Ticked: parity tests sign in to the original site with the accounts below, never the Vercel ones. Unticked: the Vercel accounts above are used there too.' },
-  ...['admin', 'member', 'agency_head', 'approving_officer', 'chief_reviewer'].map(role => ({
-    group: 'Original-site accounts', key: `ORIGINAL_ACCOUNT_${role.toUpperCase()}`, label: `${role} on the original`, showIf: 'ORIGINAL_SEPARATE_ACCOUNTS',
-    help: `username:password of the ${role} account on the original site.`, secret: true,
+  ...SIGNED_IN.map(r => ({
+    group: 'Original-site accounts', key: `ORIGINAL_ACCOUNT_${r.role.toUpperCase()}`, label: `${r.role} on the original`, showIf: 'ORIGINAL_SEPARATE_ACCOUNTS', secret: true,
+    help: `username:password on the original site, e.g. ${r.original}.`,
   })),
   { group: 'Safety', key: 'ALLOW_WRITE_TESTS', label: 'Allow write tests', help: 'true = run tests that add then delete QA-AUTO records.', placeholder: 'false' },
   { group: 'Timing', key: 'SETTLE_MS', label: 'Settle time (ms)', help: 'How long a page must stay unchanged before it counts as loaded.', placeholder: '2500' },
