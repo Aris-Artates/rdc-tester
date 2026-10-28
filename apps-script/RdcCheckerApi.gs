@@ -93,6 +93,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('RDC QA')
     .addItem('Set up / repair spreadsheet', 'rqaSetupSheet')
     .addItem('Refresh statuses', 'rqaRefresh')
+    .addItem('Sync test cases from rdc-tester', 'rqaSyncTestsFromRepo')
     .addSeparator()
     .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
     .addItem('Fix Freedcamp task: name, assignee, followers & dates (selected tickets)', 'rqaFixFreedcampPeople')
@@ -905,6 +906,22 @@ function rqaSyncTests_(tests, update) {
   if (newRows.length) C.sh.getRange(C.lastRow + 1, 1, newRows.length, width).setValues(newRows);
   return { ok: true, added: added, updated: updated, skippedCancelled: skipped };
 }
+
+/**
+ * Menu: adds / refreshes the checker's test cases from apps-script/test-cases.json in the rdc-tester repo
+ * (made by "npm run sync-sheet -- --export"). Same rules as the checker's own sync; no web app or token needed.
+ */
+function rqaSyncTestsFromRepo() {
+  var ui = SpreadsheetApp.getUi();
+  var res = UrlFetchApp.fetch(RQA_CASES_URL, { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return ui.alert('Could not read the test cases from GitHub (HTTP ' + res.getResponseCode() + ').');
+  var data = JSON.parse(res.getContentText());
+  var r = rqaSyncTests_(data.tests || [], true);
+  rqaRefresh();
+  ui.alert('Test cases synced', r.added.length + ' added, ' + r.updated.length + ' updated, ' + r.skippedCancelled.length +
+    ' closed / reworked left alone (exported ' + String(data.exported || '').slice(0, 16).replace('T', ' ') + ').', ui.ButtonSet.OK);
+}
+var RQA_CASES_URL = 'https://raw.githubusercontent.com/Aris-Artates/rdc-tester/main/apps-script/test-cases.json';
 
 // ================================================================ Freedcamp
 
