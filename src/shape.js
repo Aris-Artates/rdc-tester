@@ -9,11 +9,13 @@
  */
 export function readShape() {
   const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  // "Total<br>No. of Projects" must read "Total No. of Projects", not "TotalNo. of Projects".
+  const text = e => { const c = e.cloneNode(true); c.querySelectorAll('br').forEach(b => b.replaceWith(' ')); return clean(c.textContent); };
   const shown = e => !!(e.offsetParent || e.getClientRects().length);
   const inChrome = e => !!e.closest('nav, header, footer, [role="dialog"], .modal, table, [data-sonner-toaster]');
   const tables = [...document.querySelectorAll('table')]
     .filter(t => shown(t) && !t.closest('.modal, [role="dialog"]'))
-    .map(t => [...t.querySelectorAll('thead th')].filter(th => (th.colSpan || 1) <= 1).map(th => clean(th.textContent)).filter(Boolean))
+    .map(t => [...t.querySelectorAll('thead th')].filter(th => (th.colSpan || 1) <= 1).map(text).filter(Boolean))
     .filter(h => h.length);
   const selects = [...document.querySelectorAll('select')]
     .filter(s => !s.closest('.modal, [role="dialog"]') && s.options.length > 1)

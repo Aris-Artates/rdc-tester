@@ -48,9 +48,11 @@ export default [
   pair('PAR-013', 'Accounts', 'Agencies columns', 'admin',
     { original: '/rdc_dashboard/agency.php', vercel: '/accounts/agencies', columns: true }),
   pair('PAR-014', 'Projects', 'Projects list columns and filters', 'admin',
-    { original: '/rdc_dashboard/project_proposals.php', vercel: '/projects', columns: true, filters: true }),
-  // Every other role's top menus (fixed IDs in src/roles.js). "/" lands each role on its own dashboard on the
-  // original site; /profile is open to every member on Vercel. PAR-001 / PAR-002 cover RDC Admin and Agency Head.
+    { original: '/rdc_dashboard/project_proposals.php', vercel: '/projects', columns: true, filters: true,
+      alias: { 'Brgy./City/Municipality/Province/ Congressional District': 'Location' } }),
+  // Every other role's top menus (fixed IDs in src/roles.js). /rdc_dashboard/ sends each role to its own dashboard
+  // on the original site (the home page "/" keeps showing the login form even when signed in); /profile is open to
+  // every member on Vercel. PAR-001 / PAR-002 cover RDC Admin and Agency Head.
   ...ROLE_INFO.filter(r => r.menu && !['PAR-001', 'PAR-002'].includes(r.menu)).map(r =>
-    pair(r.menu, 'Navigation', `top menus for ${r.name}`, r.role, { original: '/', vercel: '/profile', menu: true })),
+    pair(r.menu, 'Navigation', `top menus for ${r.name}`, r.role, { original: '/rdc_dashboard/', vercel: '/profile', menu: true })),
 ];

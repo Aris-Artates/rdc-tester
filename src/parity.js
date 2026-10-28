@@ -26,6 +26,29 @@ export function missingFrom(want, have, alias = {}) {
   return want.filter(w => !got.has(norm(alias[w] ?? w)));
 }
 
+// Column wording: "#" is "No", plurals count as singular, filler words are ignored.
+const FILLER = new Set(['the', 'of', 'in', 'and', 'to', 'by', 'php']);
+const words = s => norm(String(s || '').replace(/#/g, ' no ')).split(' ').filter(w => w && !FILLER.has(w)).map(w => w.length > 3 ? w.replace(/s$/, '') : w);
+const within = (a, b) => a.length > 0 && a.every(w => b.includes(w));
+
+/**
+ * Like missingFrom for column headers, but a renamed column still counts when one name's words are all in the
+ * other ("Agency Acronym" ~ "Acronym", "Applicable Year" ~ "Applicable Fiscal Year", "PPA ID" ~ "Project / PPA ID").
+ * Returns { gone, renamed } where renamed lists "original ~ Vercel" pairs matched that way.
+ */
+export function columnsMissing(want, have, alias = {}) {
+  const gone = [], renamed = [];
+  const exact = new Set(have.map(norm));
+  for (const w of want) {
+    const target = alias[w] ?? w;
+    if (exact.has(norm(target))) continue;
+    const tw = words(target);
+    const hit = have.find(h => { const hw = words(h); return within(tw, hw) || within(hw, tw); });
+    if (hit) renamed.push(`${w} ~ ${hit}`); else gone.push(w);
+  }
+  return { gone, renamed };
+}
+
 /** Compare two shapes' dropdowns. Returns lines describing what the original offers that Vercel lacks. */
 export function compareSelects(orig, verc, { dataListSize = 15 } = {}) {
   const lines = [], notes = [];
@@ -56,10 +79,12 @@ export function compareSelects(orig, verc, { dataListSize = 15 } = {}) {
 export async function originalDialogColumns(page, title) {
   return page.evaluate(want => {
     const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+    // "Total<br>No. of Projects" must read "Total No. of Projects", not "TotalNo. of Projects".
+    const text = e => { const c = e.cloneNode(true); c.querySelectorAll('br').forEach(b => b.replaceWith(' ')); return clean(c.textContent); };
     const modal = [...document.querySelectorAll('.modal')].find(m => clean(m.querySelector('.modal-title')?.textContent).toLowerCase() === want.toLowerCase());
     if (!modal) return null;
     const table = modal.querySelector('table');
-    return table ? [...table.querySelectorAll('thead th')].filter(th => (th.colSpan || 1) <= 1).map(th => clean(th.textContent)).filter(Boolean) : [];
+    return table ? [...table.querySelectorAll('thead th')].filter(th => (th.colSpan || 1) <= 1).map(text).filter(Boolean) : [];
   }, title);
 }
 
@@ -105,9 +130,10 @@ export async function runParity(t, spec) {
     if (!oc.length) notes.push('original shows no table');
     else if (!vc.length) missing.push('the table');
     else {
-      const gone = missingFrom(oc, vc, alias);
+      const { gone, renamed } = columnsMissing(oc, vc, alias);
       if (gone.length) missing.push('columns: ' + gone.join(', '));
-      const added = missingFrom(vc, oc, Object.fromEntries(Object.entries(alias).map(([a, b]) => [b, a])));
+      if (renamed.length) notes.push('renamed columns: ' + renamed.join(', '));
+      const added = columnsMissing(vc, oc, Object.fromEntries(Object.entries(alias).map(([a, b]) => [b, a]))).gone;
       if (added.length) extra.push('columns: ' + added.join(', '));
     }
   }
@@ -127,7 +153,7 @@ export async function runParity(t, spec) {
       const vc = await vercelDialogColumns(t.page, spec.dialog.button);
       if (vc == null) missing.push(`"${spec.dialog.button}" button`);
       else {
-        const gone = missingFrom(oc, vc, alias).filter(c => !/^no\.?$/i.test(c));
+        const gone = columnsMissing(oc, vc, alias).gone.filter(c => !/^no\.?$/i.test(c));
         if (gone.length) missing.push(`"${spec.dialog.title}" dialog columns: ${gone.join(', ')}`);
       }
     }
