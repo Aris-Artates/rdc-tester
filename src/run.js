@@ -9,6 +9,7 @@
  *   --ticket 12,15             only tests linked to these dev tickets (sheet column "Dev Ticket")
  *   --push                     write results to the sheet ("Check Log" + "QA Tests")
  *   --shots fail|all|none      screenshots (default fail)
+ *   --workers 3                run this many accounts at the same time (default 1)
  *   --headed                   show the browser
  *   --dry                      list what would run; no browser
  *   --list                     print the whole test catalog and exit
@@ -127,7 +128,10 @@ async function runOne(t, test) {
 }
 
 let pushedUpTo = 0, pushedTotal = 0, skippedBySheet = [];
-async function flush(label) {
+// Accounts can run side by side (--workers): pushes go one at a time so no result is sent twice.
+let flushing = Promise.resolve();
+const flush = label => (flushing = flushing.then(() => flushNow(label)));
+async function flushNow(label) {
   writeCsv(path.join(outDir, 'results.csv'), results);
   if (!opt('push') || !sheet.size) return;
   const batch = results.slice(pushedUpTo).filter(r => sheet.has(r.id));
@@ -143,13 +147,13 @@ async function flush(label) {
   }
 }
 
-for (const { role, tests } of groups) {
+async function runGroup({ role, tests }) {
   console.log(`\n== ${role}`);
   const account = role === 'public' ? null : accountFor(role);
   if (role !== 'public' && !account) {
     for (const test of tests) await record(null, test, new Outcome('Blocked', `No ${newKey(role)} in .env`));
     await flush(role);
-    continue;
+    return;
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   let originalContext = null;
@@ -163,7 +167,7 @@ for (const { role, tests } of groups) {
       if (signIn.ok && signIn.landed === '/change-password') signIn = { ok: false, message: 'Account must change its default password first (sign in once by hand and change it)' };
       if (!signIn.ok) {
         for (const test of tests) await record(null, test, new Outcome('Blocked', 'Sign-in failed: ' + signIn.message));
-        continue;
+        return;
       }
     }
     // Parity tests also need the same role on the original site (read only).
@@ -202,6 +206,9 @@ for (const { role, tests } of groups) {
     await flush(role);
   }
 }
+const queue = [...groups];
+const workers = Math.max(1, Number(opt('workers', 1)) || 1);
+await Promise.all(Array.from({ length: Math.min(workers, queue.length) }, async () => { while (queue.length) await runGroup(queue.shift()); }));
 await browser.close();
 
 // ---- output

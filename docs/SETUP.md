@@ -177,7 +177,45 @@ Click a cell to jump to that page's details: every difference, the button-by-but
 
 ![Report page detail](img/report-page-detail.png)
 
-## 6. Run it every day (optional, Windows)
+## 6. The same checks as sheet test cases
+
+Every page × role pair is also a test case in the sheet, so results land on **Test Cases** and the dashboards:
+
+| ID | Kind | Checks |
+|---|---|---|
+| `ACC-<page>-<role>`, e.g. `ACC-51-AHD` | Access | the role can open the page on both sites, or is blocked on both |
+| `CMP-<page>-<role>`, e.g. `CMP-51-AHD` | Data | same columns, filters and buttons; buttons do the same; same row total |
+| `WRT-01` … `WRT-08` | Functional | add, find and delete a TEST- record on a settings page, on both sites |
+
+The page number is the line in `src/pagemap.js`. Role codes are in `src/tests/matrix.js`: PUB, ADM, RCHK, RENC, RMEM, RAO,
+AADM, AHD, ACHK, AENC, AGST, PSR, CSO, RIATF, DBMR, CHEDR, DBMC, CHEDC, NEDAC, NEDAR, DBMO, LGU, CONG, GST, INV, GAD, PUSR, UPL.
+
+To put new or changed test cases into the sheet, export the list, commit and push it, then in the sheet click
+**RDC QA > Sync test cases from rdc-tester**:
+
+```bash
+npm run sync-sheet -- --export
+```
+
+Run them with `npm run qa`. Use `--workers` to run several accounts at the same time:
+
+```bash
+npm run qa -- --kind Access,Data --workers 3 --push
+```
+
+One role only:
+
+```bash
+npm run qa -- --role agency_head --kind Access,Data
+```
+
+Only failed or blocked cases, by their latest result in the sheet:
+
+```bash
+npm run qa -- --status Fail,Blocked --workers 3 --push
+```
+
+## 7. Run it every day (optional, Windows)
 
 To start a retest each time Windows starts, press **Win+R**, type `shell:startup`, and press Enter. In that
 folder, make a file `RDC Compare.bat` containing:

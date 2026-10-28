@@ -75,7 +75,7 @@ async function deleteRow(page, row) {
   return 'ok';
 }
 
-async function roundTrip(page, url, name) {
+export async function roundTrip(page, url, name) {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs }); await settle(page);
   const added = await addRecord(page, name);
   if (added !== 'ok') return { add: added };
@@ -89,7 +89,7 @@ async function roundTrip(page, url, name) {
   return (await still.count()) ? { add: 'ok', find: 'ok', delete: 'row still there after Delete', leftover: true } : { add: 'ok', find: 'ok', delete: 'ok' };
 }
 
-const summary = r => ['add', 'find', 'delete'].map(k => r[k] && `${k}: ${r[k]}`).filter(Boolean).join('; ') + (r.leftover ? ' — LEFTOVER row, delete it by hand' : '');
+export const summary = r => ['add', 'find', 'delete'].map(k => r[k] && `${k}: ${r[k]}`).filter(Boolean).join('; ') + (r.leftover ? ' — LEFTOVER row, delete it by hand' : '');
 
 export async function runRoundTrips(browser, outDir) {
   const out = [];

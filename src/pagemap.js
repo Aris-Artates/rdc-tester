@@ -2,10 +2,12 @@
  * Every page of the original site's menus (signed in as RDC Admin) and the Vercel page that replaces it.
  * The original site is the baseline: a page with `vercel: null` has no Vercel page yet and is reported as missing.
  * `menu` is the original menu path, used as the page's name in reports.
+ * `no` (01, 02, ...) is the page's number in the ACC- / CMP- test IDs: it is the position in this list, so
+ * NEW PAGES GO AT THE END and existing lines are never moved or removed (mark a retired page instead).
  */
 const P = (menu, legacy, vercel) => ({ menu, legacy: '/rdc_dashboard/' + legacy, vercel });
 
-export const PAGES = [
+const LIST = [
   P('Home', 'agency_dashboard.php', '/portal'),
   P('Projects > All Project Proposals', 'project_proposals.php', '/projects'),
   P('Projects > Add New Project Proposal', 'add_new-project_proposals.php', '/projects/new'),
@@ -82,3 +84,5 @@ export const PAGES = [
   P('Settings > Automate Notifications', 'automate_notifications.php', null),
   P('My Profile', 'profile.php', '/profile'),
 ];
+
+export const PAGES = LIST.map((p, i) => ({ ...p, no: String(i + 1).padStart(2, '0') }));
