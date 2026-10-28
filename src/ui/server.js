@@ -24,15 +24,18 @@ export const SCHEMA = [
   { group: 'Sheet connection', key: 'CHECKER_NAME', label: 'Checker name', help: 'Name written in the Check Log. Add it to the Team tab.', placeholder: 'RDC QA Bot' },
   { group: 'App addresses', key: 'APP_URL_VERCEL', label: 'Vercel app URL (tested)', help: 'Base URL, no trailing slash.', placeholder: 'https://evims.vercel.app' },
   { group: 'App addresses', key: 'APP_URL_ORIGINAL', label: 'Original site URL (reference)', help: 'Parity tests (PAR-) sign in here read-only and compare it with Vercel.', placeholder: 'https://evims.rdc8ims.online' },
+  { group: 'QA accounts', key: 'QA_PASSWORD', label: 'Shared QA password', help: 'One password for every QA account on both sites. npm run accounts makes it the first time; never share it in chat.', secret: true },
+  { group: 'QA accounts', key: 'SETUP_ADMIN_NEW', label: 'Setup admin on Vercel', help: 'username:password of an existing Vercel RDC Admin; npm run accounts signs in with it to add the QA accounts. Empty = NEW_RDC_ADMIN.', secret: true },
+  { group: 'QA accounts', key: 'SETUP_ADMIN_LEGACY', label: 'Setup admin on the original site', help: 'username:password of an existing RDC Admin on the original site. Empty = LEGACY_RDC_ADMIN.', secret: true },
   // One account per role on each site (src/roles.js): NEW_<ROLE> on Vercel, LEGACY_<ROLE> on the original.
   ...SIGNED_IN.map(r => ({
     group: 'New site accounts (Vercel)', key: `NEW_${r.key}`, label: `NEW_${r.key}`, secret: true,
-    help: `${r.name}: username:password on Vercel${r.vercel ? `, e.g. ${r.vercel}` : ['admin', 'member'].includes(r.role) ? '' : ' (no test account yet; empty = its tests are Blocked)'}.`,
+    help: `${r.name}: username (uses QA_PASSWORD) or username:password on Vercel${r.vercel ? `, e.g. ${r.vercel}` : ['admin', 'member'].includes(r.role) ? '' : ' (no test account yet; empty = its tests are Blocked)'}.`,
   })),
   { group: 'Legacy site accounts (original)', key: 'ORIGINAL_SEPARATE_ACCOUNTS', type: 'checkbox', label: 'Use different accounts', help: 'Ticked: parity tests sign in to the original site with the LEGACY_ accounts below, never the NEW_ ones. Unticked: the NEW_ accounts are used there too.' },
   ...SIGNED_IN.filter(r => !r.vercelOnly).map(r => ({
     group: 'Legacy site accounts (original)', key: `LEGACY_${r.key}`, label: `LEGACY_${r.key}`, showIf: 'ORIGINAL_SEPARATE_ACCOUNTS', secret: true,
-    help: `${r.name}: username:password on the original site${r.original ? `, e.g. ${r.original}` : ' (no test account yet)'}.`,
+    help: `${r.name}: username (uses QA_PASSWORD) or username:password on the original site${r.original ? `, e.g. ${r.original}` : ' (no test account yet)'}.`,
   })),
   { group: 'Safety', key: 'ALLOW_WRITE_TESTS', label: 'Allow write tests', help: 'true = run tests that add then delete QA-AUTO records.', placeholder: 'false' },
   { group: 'Timing', key: 'SETTLE_MS', label: 'Settle time (ms)', help: 'How long a page must stay unchanged before it counts as loaded.', placeholder: '2500' },

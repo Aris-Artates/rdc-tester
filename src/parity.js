@@ -39,11 +39,14 @@ const within = (a, b) => a.length > 0 && a.every(w => b.includes(w));
 export function columnsMissing(want, have, alias = {}) {
   const gone = [], renamed = [];
   const exact = new Set(have.map(norm));
+  // A Vercel column that already matches an original column exactly is not free to stand in for another one
+  // ("Agency" must not count as "Agency Acronym" when the original has its own "Agency" column).
+  const taken = new Set(want.map(w => norm(alias[w] ?? w)).filter(n => exact.has(n)));
   for (const w of want) {
     const target = alias[w] ?? w;
     if (exact.has(norm(target))) continue;
     const tw = words(target);
-    const hit = have.find(h => { const hw = words(h); return within(tw, hw) || within(hw, tw); });
+    const hit = have.filter(h => !taken.has(norm(h))).find(h => { const hw = words(h); return within(tw, hw) || within(hw, tw); });
     if (hit) renamed.push(`${w} ~ ${hit}`); else gone.push(w);
   }
   return { gone, renamed };

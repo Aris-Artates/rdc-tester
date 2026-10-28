@@ -10,7 +10,9 @@
     "qa:list": "node src/run.js --list",
     "sync-sheet": "node src/sync.js",
     "ui": "node src/ui/server.js",
-    "setup": "npx playwright install chromium"
+    "setup": "npx playwright install chromium",
+    "accounts": "node src/accounts.js",
+    "compare": "node src/compare.js"
   },
   "dependencies": {
     "dotenv": "16.4.5",

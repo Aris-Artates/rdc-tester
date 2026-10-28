@@ -4,11 +4,18 @@ Checks the **RDC8 IMS Vercel deployment** (`https://evims.vercel.app`, set in `A
 browser and writes the results into the QA Google Sheet, the same way a tester would. No AI runs during a
 check: every test is a fixed rule in `src/tests/`.
 
-The original WordPress site (`https://evims.rdc8ims.online`) is the **reference**, never changed:
+The original WordPress site (`https://evims.rdc8ims.online`) is the **reference**, never changed (except the
+TEST- records `npm run compare -- --write` adds and deletes again):
 - **Parity tests** (`PAR-`, `src/tests/parity.js`) sign in to both sites with the same role and compare what
   each page offers: table columns, filters and their choices, action buttons, dialog columns and the top menus.
   They do not compare the data itself: the two databases have drifted since the migration.
 - **Data tests** (`DATA-`) compare a figure with the value QA typed in the sheet's Reference column.
+
+**Full comparison** (`npm run compare`, `src/compare.js`): for every account type and every page of the original
+menus, checks access, layout, what each button does, and row counts, with the original as the baseline. It
+writes `results/compare-<time>/index.html` with both sites' screenshots side by side. `npm run accounts` creates
+the QA accounts (the same usernames on both sites, one shared password). Setting up a PC:
+**[docs/SETUP.md](docs/SETUP.md)**.
 
 The tasks on Freedcamp have their own scripts (`FC-`, `src/tests/freedcamp.js`), one or more per task, run
 with the role the task is about (RDC Admin, Agency Head, Approving Officer, Chief Reviewer). They open

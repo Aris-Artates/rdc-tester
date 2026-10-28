@@ -25,8 +25,10 @@ export const config = {
   allowWrite: bool('ALLOW_WRITE_TESTS'),
 };
 
+// "username:password", or just "username" for the QA accounts (npm run accounts), which share QA_PASSWORD.
 const parseAccount = raw => {
   const i = raw.indexOf(':');
+  if (i < 0) return raw && env('QA_PASSWORD') ? { username: raw, password: env('QA_PASSWORD') } : null;
   return i < 1 ? null : { username: raw.slice(0, i), password: raw.slice(i + 1) };
 };
 const oldKey = role => String(role).toUpperCase().replace(/[^A-Z0-9]+/g, '_');
