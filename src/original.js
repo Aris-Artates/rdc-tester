@@ -8,27 +8,38 @@ import { settle } from './app.js';
 const abs = p => (/^https?:/.test(p) ? p : config.originalUrl + (p.startsWith('/') ? p : '/' + p));
 const LOGIN_FORM = '#ajax-login-form';
 
-/** Sign in through the home page's AJAX login form. Returns { ok, message }. */
+/**
+ * Sign in through the home page's AJAX login form, the same way the Leyeco checker signs in: wait for the
+ * page to go quiet, type and check the fields took the text, then wait for the login request's answer and
+ * report its status. Returns { ok, message }.
+ */
 export async function loginOriginal(page, account) {
-  await page.goto(abs('/'), { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
+  await page.goto(abs('/'), { waitUntil: 'load', timeout: config.pageTimeoutMs });
+  // Text typed before the page's scripts finish loading is dropped: wait for the page to go quiet first.
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   const form = page.locator(LOGIN_FORM);
   if (!(await form.count())) return { ok: true, message: 'Original site: already signed in' };
-  await form.locator('#username').fill(account.username);
-  await form.locator('#password').fill(account.password);
-  // The site is behind Cloudflare: a 403 on the login POST means its bot protection refused the checker.
-  let blocked = 0;
-  const onResponse = r => { if (r.request().method() === 'POST' && /wp-login\.php|admin-ajax\.php/.test(r.url()) && r.status() === 403) blocked = r.status(); };
-  page.on('response', onResponse);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await form.locator('#username').fill(account.username);
+    await form.locator('#password').fill(account.password);
+    await new Promise(r => setTimeout(r, 300));
+    if ((await form.locator('#username').inputValue()) === account.username) break;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  const answer = page.waitForResponse(r => r.request().method() === 'POST' && /wp-login\.php|admin-ajax\.php/.test(r.url()), { timeout: config.pageTimeoutMs }).catch(() => null);
   await form.locator('#wp-submit').click();
-  // The form signs in by AJAX, then reloads or redirects. Wait for that, then prove the session by opening
-  // a dashboard page (no login form = signed in), whatever page WordPress chose to land on.
-  const deadline = Date.now() + config.pageTimeoutMs * 2;
-  while (Date.now() < deadline && !blocked) {
+  const resp = await answer;
+  const sent = `username "${account.username}", password of ${account.password.length} characters`;
+  if (!resp) return { ok: false, message: `Original site: Sign In sent no login request (form not ready?) (${sent})` };
+  // The site is behind Cloudflare: 403 here is its bot protection refusing the checker, not WordPress refusing the account.
+  if (resp.status() === 403) return { ok: false, message: `Original site: Cloudflare refused the automated sign-in (HTTP 403 on ${new URL(resp.url()).pathname}). The site admin needs a Cloudflare rule that lets the checker through; the account was not checked (${sent}).` };
+  if (resp.status() >= 400) return { ok: false, message: `Original site: login answered HTTP ${resp.status()} (${sent})` };
+  // Accepted: the form then reloads or redirects; give it time before proving the session below.
+  const deadline = Date.now() + config.pageTimeoutMs;
+  while (Date.now() < deadline) {
     if (new URL(page.url()).pathname !== '/' || !(await form.isVisible().catch(() => false))) break;
     await new Promise(r => setTimeout(r, 500));
   }
-  page.off('response', onResponse);
-  if (blocked) return { ok: false, message: `Original site: Cloudflare refused the automated sign-in (HTTP ${blocked} on the login). The site admin needs a Cloudflare rule that lets the checker through; the account itself was not rejected.` };
   // The form's last line is its status ("Signing in...", or the error WordPress sent back).
   const status = (await form.innerText().catch(() => '')).split('\n').map(l => l.trim()).filter(Boolean).pop() || '';
   await settle(page);

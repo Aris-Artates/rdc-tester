@@ -187,7 +187,7 @@ for (const { role, tests } of groups) {
       }
     }
     for (const test of tests) {
-      if (test.original && !originalPage) { await record(null, test, new Outcome('Blocked', 'Original site: ' + originalProblem)); continue; }
+      if (test.original && !originalPage) { await record(null, test, new Outcome('Blocked', /^Original site/.test(originalProblem) ? originalProblem : 'Original site: ' + originalProblem)); continue; }
       const mk = () => makeT({ page, test, sheetRow: sheet.get(test.id), originalPage: test.original ? originalPage : null });
       let outcome = await runOne(mk(), test);
       // Session dropped mid-run: sign in again once and retry, so one expiry doesn't fail the rest.
