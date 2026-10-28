@@ -114,15 +114,20 @@ async function pickRole(page, typeSel, roleSel, a, site) {
 }
 
 async function createVercel(page, a, password) {
-  await page.goto(abs('/accounts/users'), { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
-  await settle(page);
-  const add = page.getByRole('button', { name: '+ Add New User' });
-  if (!(await add.count())) throw new Error('no "+ Add New User" button: the setup admin is not a Vercel admin');
-  await add.click();
   // The dialog's labels are not tied to their fields (no "for"): each field is the element right after its label.
   const after = (label, tag) => `xpath=//label[normalize-space()="${label}"]/following-sibling::${tag}[1]`;
   const field = l => page.locator(after(l, 'input'));
-  await field('Username').waitFor({ timeout: 15000 });
+  // The dialog shows "Loading…" while it fetches every agency, member type and role. That is sometimes very slow
+  // or never answers, so a dialog still loading after 45 s is closed and the page opened again (3 tries).
+  for (let attempt = 1; ; attempt++) {
+    await page.goto(abs('/accounts/users'), { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
+    await settle(page);
+    const add = page.getByRole('button', { name: '+ Add New User' });
+    if (!(await add.count())) throw new Error('no "+ Add New User" button: the setup admin is not a Vercel admin');
+    await add.click();
+    if (await field('Username').waitFor({ timeout: 45000 }).then(() => true, () => false)) break;
+    if (attempt === 3) throw new Error('the Add New User form stayed on "Loading…" (3 tries of 45 s)');
+  }
   await field('Username').fill(a.username);
   await page.locator(after('Password', 'div') + '//input').fill(password);
   const note = await pickRole(page, after('Member Type', 'select'), after('Role', 'select'), a, 'vercel');
