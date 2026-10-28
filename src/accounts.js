@@ -119,15 +119,17 @@ async function createVercel(page, a, password) {
   const add = page.getByRole('button', { name: '+ Add New User' });
   if (!(await add.count())) throw new Error('no "+ Add New User" button: the setup admin is not a Vercel admin');
   await add.click();
-  const field = l => page.locator(`label:text-is("${l}") + input`);
+  // The dialog's labels are not tied to their fields (no "for"): each field is the element right after its label.
+  const after = (label, tag) => `xpath=//label[normalize-space()="${label}"]/following-sibling::${tag}[1]`;
+  const field = l => page.locator(after(l, 'input'));
   await field('Username').waitFor({ timeout: 15000 });
   await field('Username').fill(a.username);
-  await page.locator('label:text-is("Password") + div input').fill(password);
-  const note = await pickRole(page, 'label:text-is("Member Type") + select', 'label:text-is("Role") + select', a, 'vercel');
-  if (a.agency) await page.locator('label:text-is("Agency Name") + select').selectOption(String(QA_AGENCY));
+  await page.locator(after('Password', 'div') + '//input').fill(password);
+  const note = await pickRole(page, after('Member Type', 'select'), after('Role', 'select'), a, 'vercel');
+  if (a.agency) await page.locator(after('Agency Name', 'select')).selectOption(String(QA_AGENCY));
   await field('First Name').fill('QA');
   await field('Last Name').fill(a.name);
-  await page.locator('label:text-is("Email Address") + input').fill(`${a.username}@rdc8ims.test`);
+  await field('Email Address').fill(`${a.username}@rdc8ims.test`);
   await page.getByRole('button', { name: 'Save Changes' }).click();
   const toast = page.locator('[data-sonner-toast]').last();
   await toast.waitFor({ timeout: 20000 });
