@@ -40,7 +40,7 @@ for (const r of results) for (const p of r.pages || []) {
   byPage.get(p.menu).roles.push(p);
 }
 const tickets = [];
-const notBuiltByModule = new Map();
+const notBuiltByModule = new Map(), accessByModule = new Map();
 for (const g of byPage.values()) {
   if (opt('only') && !String(opt('only')).split(',').some(o => g.menu.toLowerCase().includes(o.trim().toLowerCase()))) continue;
   const notBuilt = g.roles.find(p => p.problems.some(x => /^Not built on Vercel|^No Vercel page/.test(x)));
@@ -57,13 +57,22 @@ for (const g of byPage.values()) {
   if (access.length) {
     const looser = access.filter(p => p.problems.some(x => /Vercel lets this role open/.test(x)));
     const stricter = access.filter(p => !looser.includes(p));
-    for (const [set, how] of [[looser, 'open'], [stricter, 'closed']]) if (set.length)
-      tickets.push({ kind: 'access', how, menu: g.menu, legacyPath: g.legacyPath, vercelPath: g.vercelPath, role: set[0].role, roles: set.map(p => p.role), problems: set.map(p => `${nameOf(p.role)}: ${p.problems.find(x => x.startsWith('Access:')).replace(/^Access: /, '')}`) });
+    // One ticket per module and direction, one picture per page (as the first role that differs there).
+    for (const [set, how] of [[looser, 'open'], [stricter, 'closed']]) if (set.length) {
+      const key = how + ' ' + g.menu.split(' > ')[0];
+      if (!accessByModule.has(key)) tickets.push(accessByModule.set(key, { kind: 'access', how, menu: g.menu.split(' > ')[0], role: set[0].role, roles: [], pages: [], problems: [] }).get(key));
+      const t = accessByModule.get(key);
+      t.pages.push({ menu: g.menu, legacyPath: g.legacyPath, vercelPath: g.vercelPath, role: set[0].role, roles: set.map(p => p.role) });
+      for (const p of set) if (!t.roles.includes(p.role)) t.roles.push(p.role);
+      t.problems.push(`${g.menu}: ${set.map(p => nameOf(p.role)).join(', ')} (${set[0].problems.find(x => x.startsWith('Access:')).replace(/^Access: /, '')})`);
+    }
   }
   // Layout, data and button problems: the admin's view when it has them, else the first role that does.
   const feat = g.roles.filter(p => p.problems.some(x => !x.startsWith('Access:')));
   const base = feat.find(p => p.role === 'admin') || feat[0];
-  if (base) tickets.push({ kind: 'features', menu: g.menu, legacyPath: g.legacyPath, vercelPath: g.vercelPath, role: base.role, roles: feat.map(p => p.role), problems: base.problems.filter(x => !x.startsWith('Access:')) });
+  if (base) tickets.push({ kind: 'features', menu: g.menu, legacyPath: g.legacyPath, vercelPath: g.vercelPath, role: base.role, roles: feat.map(p => p.role), problems: base.problems.filter(x => !x.startsWith('Access:')),
+    // Each other role's own row total, since a role's scope changes it.
+    otherData: feat.filter(p => p !== base).map(p => [p.role, p.problems.find(x => x.startsWith('Data:'))]).filter(([, x]) => x).map(([r, x]) => `${nameOf(r)}: ${x.replace(/^Data: /, '')}`) });
 }
 console.log(`${tickets.length} tickets from ${byPage.size} pages that differ`);
 
@@ -119,6 +128,8 @@ async function mark(page, marks) {
       return ctl[0] || null;
     };
     for (const m of marks) {
+      // The whole first screen: what a role sees when it opens the page (access pictures).
+      if (m.sel === 'VIEW') { box({ left: 12 - scrollX, top: 44 - scrollY, width: innerWidth - 24, height: innerHeight - 56 }, m.label); continue; }
       if (m.sel === 'DIALOG') { const d = dialog(); if (d) box(d.getBoundingClientRect(), m.label); continue; }
       if (m.sel === 'FILTER') { const x = findSelect(m); const v = x && visibleOf(x); if (v) box(v.getBoundingClientRect(), m.label); continue; }
       if (m.sel === 'FILTERS') { const x = filterPanel(); if (x) box(x.getBoundingClientRect(), m.label); continue; }
@@ -244,7 +255,7 @@ function presser(label) {
 
 // ---- one ticket -----------------------------------------------------------------------------------------
 async function evidence(t, n) {
-  const s = await sessionFor(t.role);
+  let s = await sessionFor(t.role);
   const base = path.join(OUT, `${String(n).padStart(2, '0')}-${slug(t.menu)}`);
   const shots = [];
   const pair = async (suffix, lm, vm, title, lines, prep) => {
@@ -268,9 +279,15 @@ async function evidence(t, n) {
     }
     delete t.legacyPath; delete t.vercelPath;
   } else if (t.kind === 'access') {
-    const role = t.roles[0];
-    await pair('access', [{ sel: 'main, #content, form, body', label: t.how === 'open' ? 'Original: blocked' : 'Original: opens' }], [{ sel: 'main, body', label: t.how === 'open' ? 'Vercel: opens' : 'Vercel: blocked' }],
-      `${t.menu}: access differs from the original (${nameOf(role)})`, t.problems.slice(0, 8));
+    let i = 0;
+    for (const pg of t.pages) {
+      Object.assign(t, { legacyPath: pg.legacyPath, vercelPath: pg.vercelPath });
+      s = await sessionFor(pg.role);
+      await pair(`access${++i}`, [{ sel: 'VIEW', label: t.how === 'open' ? `Original: ${nameOf(pg.role)} is blocked here` : `Original: ${nameOf(pg.role)} can open this page` }],
+        [{ sel: 'VIEW', label: t.how === 'open' ? `Vercel: ${nameOf(pg.role)} can open this page` : `Vercel: ${nameOf(pg.role)} is sent away from this page` }],
+        `${pg.menu}: access differs from the original (as ${nameOf(pg.role)})`, [t.problems[i - 1]]);
+    }
+    delete t.legacyPath; delete t.vercelPath;
   } else {
     // Static differences on one picture; each form difference on its own picture with the dialog open.
     const statics = t.problems.filter(p => !/^"/.test(p));
