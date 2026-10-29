@@ -1,0 +1,158 @@
+{
+ "exported": "2026-10-29T03:51:14.617Z",
+ "from": "results/differences-2026-10-29",
+ "tickets": [
+  {
+   "title": "BUG: Home - Match the original: filters",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Filters: filter (Tier 1, Tier 2...) has no matching dropdown\n- Filters: filter (Typology, Capital Investment, Government Facilities...) has no matching dropdown\n- Filters: filter (Congr. Dist, Eastern Samar Lone District, Leyte 1st District...) has no matching dropdown\n- Filters: filter lacks: SAMAR (WESTERN SAMAR)\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/agency_dashboard.php\nVercel: https://evims.vercel.app/portal\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Projects - All Project Proposals - Match the original: columns, filters, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Fiscal Year, Agency Priority Rank, Project Image, Tier Type, Typology, Brgy./City/Municipality/Province/ Congressional District, Responsiveness Status\n- Filters: filter \"agency-select\" (Agency, Sector, Status...) has no matching dropdown\n- Data: the original lists 2456 rows, Vercel 10\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/project_proposals.php\nVercel: https://evims.vercel.app/projects\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Projects - Add New Project Proposal - Access differs from the original",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- RDC Admin: Vercel lets this role open the page; the original blocks it (Sent to /rdc_dashboard/project_proposals.php)\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/add_new-project_proposals.php\nVercel: https://evims.vercel.app/projects/new\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Projects - Projects Map - Match the original: filters",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Filters: filter lacks: Typology\n- Filters: filter lacks: Congr. Dist\n- Filters: filter lacks: SAMAR (WESTERN SAMAR)\n- Filters: filter (Draft, Sent to Agency Head, Approved by Agency Head...) has no matching dropdown\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/projects-map.php\nVercel: https://evims.vercel.app/\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "FEAT: Projects - Project Suggestions - Build the page (not on Vercel yet)",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Projects > Project Suggestions: https://evims.rdc8ims.online/rdc_dashboard/project_suggestions.php (no Vercel page)\n\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "FEAT: Analytics - Build the 13 pages not on Vercel yet",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Analytics > All Sectors: https://evims.rdc8ims.online/rdc_dashboard/all_sectors.php (no Vercel page)\n- Analytics > Development Administration Committee: https://evims.rdc8ims.online/rdc_dashboard/analytics_by_sector.php?abbr=DAC (no Vercel page)\n- Analytics > Economic Development Committee: https://evims.rdc8ims.online/rdc_dashboard/analytics_by_sector.php?abbr=EDC (no Vercel page)\n- Analytics > Environment Sector: https://evims.rdc8ims.online/rdc_dashboard/analytics_by_sector.php?abbr=EnC (no Vercel page)\n- Analytics > Infrastructure and Utilities Development Committee: https://evims.rdc8ims.online/rdc_dashboard/analytics_by_sector.php?abbr=IUDC (no Vercel page)\n- Analytics > Social Development Committee: https://evims.rdc8ims.online/rdc_dashboard/analytics_by_sector.php?abbr=SDC (no Vercel page)\n- Analytics > Projects By Agency: https://evims.rdc8ims.online/rdc_dashboard/projects_analytics_agency.php (no Vercel page)\n- Analytics > Projects Analytics: https://evims.rdc8ims.online/rdc_dashboard/projects_analytics.php (no Vercel page)\n- Analytics > Budget Utilization Rate Analytics: https://evims.rdc8ims.online/rdc_dashboard/bur_analytics.php (no Vercel page)\n- Analytics > Responsiveness to Dev Goals Analytics: https://evims.rdc8ims.online/rdc_dashboard/responsive_dev_goals_analytics.php (no Vercel page)\n- Analytics > GAD Responsiveness Analytics: https://evims.rdc8ims.online/rdc_dashboard/gad_responsiveness_analytics.php (no Vercel page)\n- Analytics > Outcome Analytics: https://evims.rdc8ims.online/rdc_dashboard/outcome_analytics.php (no Vercel page)\n- Analytics > SDG 2030 Analytics: https://evims.rdc8ims.online/rdc_dashboard/sdg_analytics.php (no Vercel page)\n\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Reviews - All Comments - Match the original: filters, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"grpFilter\" (By Project, By Agency...) has no matching dropdown\n- Data: the original lists 1126 rows, Vercel 1094\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/all_comments.php\nVercel: https://evims.vercel.app/reviews?type=all\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Reviews - Public Comments - Match the original: columns, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Commentor Type\n- Data: the original lists 5 rows, Vercel 7\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/public_comments.php\nVercel: https://evims.vercel.app/reviews?type=public\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Reviews - RIATF Comments - Match the original: filters, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"agency_id\" (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Data: the original lists 2457 rows, Vercel 0\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/riatf_comments.php\nVercel: https://evims.vercel.app/reviews?type=riatf\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Reviews - Reviewers Comments - Match the original: columns, filters, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Reviewer, Comment Classification, Action Taken\n- Filters: filter \"reviewerAgency\" (Reviewer's Agency, NEDA, DBM...) has no matching dropdown\n- Filters: filter \"agency_id\" (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Filters: filter \"classification\" (Comment Classification, Cost, Area/Scope...) has no matching dropdown\n- Data: the original lists 5547 rows, Vercel 1\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/reviewers_comments.php\nVercel: https://evims.vercel.app/reviews?type=reviewers\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Reviews - PSRs Comments - Match the original: columns, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Commentor Type\n- Data: the original lists 10 rows, Vercel 6\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/psrs_comments.php\nVercel: https://evims.vercel.app/reviews?type=psrs\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Reviews - Other Members Comments - Match the original: columns, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Commentor Type\n- Data: the original lists 5 rows, Vercel 1080\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/members_comments.php\nVercel: https://evims.vercel.app/reviews?type=other\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Monitoring - Deficiency Status - Match the original: filters, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"agency-select\" (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Data: the original lists 2361 rows, Vercel 2487\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/deficiency_status.php\nVercel: https://evims.vercel.app/monitoring/deficiency\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Monitoring - IR Docs Status - Match the original: filters, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"agency-select\" (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Data: the original lists 730 rows, Vercel 2276\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/ir_docs_status.php\nVercel: https://evims.vercel.app/monitoring/ir-docs\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Monitoring - Review Status - Match the original: filters",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"sectorSelect\" (Development Administration Committee (DAC), Economic Development Committee (EDC), Environment Sector (EnC)...) has no matching dropdown\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/review_status_evaluator.php\nVercel: https://evims.vercel.app/monitoring\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Reports - Annex A & B - Match the original: columns, filters, row count, button actions",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: PPA Link in the IMS\n- Filters: filter \"agency-select\" (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Data: the original lists 0 rows, Vercel 1522\n- \"Export to Excel\": the original gives download \"8th ID - All Proposed Annex FY_2027.xlsx\", Vercel none\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/annex_a_and_b_reports.php\nVercel: https://evims.vercel.app/reports\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "FEAT: Reports - Build the 2 pages not on Vercel yet",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Reports > Reviewers Summary of Findings and Recommendations Report: https://evims.rdc8ims.online/rdc_dashboard/reviewers_summary_report.php (no Vercel page)\n- Reports > Reviewers Comments and Responses: https://evims.rdc8ims.online/rdc_dashboard/reviewers_comments_and_responses.php (no Vercel page)\n\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "FEAT: Records Update - RDC VIII PPA Form A-2 - Build the page (not on Vercel yet)",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Records Update > RDC VIII PPA Form A-2: https://evims.rdc8ims.online/rdc_dashboard/rdc_viii_ppa_form_a-2.php (Vercel /records/form-a2 is a placeholder)\n\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Records Update - Bulk PPA Upload - Match the original: filters, buttons, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"agency-select\" (8th Infantry Division, Armed Forces of the Philippines, Biliran Province State University, Bureau of Corrections - Leyte Regional Prison...) has no matching dropdown\n- Buttons missing on Vercel: Sample Excel File\n- Data: the original lists 73 rows, Vercel 78\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/bulk_ppa_upload.php\nVercel: https://evims.vercel.app/records/bulk-upload\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Requests - Clearances Requests - Match the original: filters",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"agency-select\" (Department of Agriculture VIII, Department of Social Welfare Development VIII, Bureau of Fisheries and Aquatic Resources VIII...) has no matching dropdown\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/clearance.php\nVercel: https://evims.vercel.app/requests/clearances\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Requests - Approval Requests - Match the original: row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Data: the original lists 2303 rows, Vercel 2352\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/approval_request.php\nVercel: https://evims.vercel.app/requests/approval\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Requests - Reviewer's Requests - Match the original: filters, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Filters: filter \"classification\" lacks: Beneficiaries and/or location, Readiness\n- Data: the original lists 5547 rows, Vercel 9959\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/reviewers_comment_approval_request.php\nVercel: https://evims.vercel.app/requests/reviewers\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Requests - Research Requests - Match the original: form fields",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- \"+ Add New Research Request\" form lacks fields on Vercel: Requested to:\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/research_request.php\nVercel: https://evims.vercel.app/requests/research\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "FEAT: Analytics and Reports - Build the 4 pages not on Vercel yet",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Analytics and Reports > Reports For RIATF: https://evims.rdc8ims.online/rdc_dashboard/reports_for_riatf.php (no Vercel page)\n- Analytics and Reports > Summary: https://evims.rdc8ims.online/rdc_dashboard/summary.php (no Vercel page)\n- Analytics and Reports > Readiness Checklists: https://evims.rdc8ims.online/rdc_dashboard/readiness_checklist.php (no Vercel page)\n- Analytics and Reports > GAD Checklists: https://evims.rdc8ims.online/rdc_dashboard/gad_checklist.php (no Vercel page)\n\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Communication - Notifications - Match the original: columns, row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Date/Time Received, Received\n- Data: the original lists 5408 rows, Vercel 8549\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/notifications.php\nVercel: https://evims.vercel.app/communication/notifications\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Communication - Messages - Match the original: row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Data: the original lists 1 rows, Vercel 20\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/send_message.php\nVercel: https://evims.vercel.app/communication/messages\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Accounts - Users - Match the original: row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Data: the original lists 500 rows, Vercel 503\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/user.php\nVercel: https://evims.vercel.app/accounts/users\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Accounts - Member Types - Match the original: row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Data: the original lists 16 rows, Vercel 15\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/all_members.php\nVercel: https://evims.vercel.app/accounts/member-types\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Accounts - Groups - Match the original: row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Data: the original lists 14 rows, Vercel 12\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/group_list.php\nVercel: https://evims.vercel.app/accounts/groups\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Accounts - Roles - Match the original: row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Data: the original lists 11 rows, Vercel 26\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/user_roles.php\nVercel: https://evims.vercel.app/accounts/roles\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Accounts - Agencies - Match the original: buttons, row count, form fields",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Buttons missing on Vercel: Assign Gdrive Folder\n- Data: the original lists 80 rows, Vercel 79\n- \"District/Department\" form lacks fields on Vercel: District/Department:\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/agency.php\nVercel: https://evims.vercel.app/accounts/agencies\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Accounts - Activity Logs - Match the original: row count",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Data: the original lists 4 rows, Vercel 2599\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/activity_log.php\nVercel: https://evims.vercel.app/accounts/activity-logs\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Settings - UUAs and Conflict-affected Vulnerable Areas - Match the original: columns",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Applicable Year\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/uuas_conflict_affected_areas.php\nVercel: https://evims.vercel.app/dev-framework/uuas\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "FEAT: Settings - Build the 3 pages not on Vercel yet",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Settings > Fund Sources: https://evims.rdc8ims.online/rdc_dashboard/fund_sources.php (Vercel /settings/fund-sources is a placeholder)\n- Settings > Notifications: https://evims.rdc8ims.online/rdc_dashboard/notification_settings.php (no Vercel page)\n- Settings > Automate Notifications: https://evims.rdc8ims.online/rdc_dashboard/automate_notifications.php (no Vercel page)\n\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Settings - Tier Type - Match the original: form fields",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- \"ADD NEW TIER TYPE\" form lacks fields on Vercel: Tier ID\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/tier_type.php\nVercel: https://evims.vercel.app/settings/tier-type\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Settings - Category - Match the original: columns",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Columns missing on Vercel: Implementation Readiness Section\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/category.php\nVercel: https://evims.vercel.app/settings/category\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Settings - Budget Absorption Capacity Scoring - Match the original: buttons",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Buttons missing on Vercel: Save Changes\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/budget_absorption_capacity_scoring.php\nVercel: https://evims.vercel.app/scoring/budget-absorption\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  },
+  {
+   "title": "BUG: Settings - Readiness Docs - Match the original: filters, buttons, layout",
+   "description": "Vercel differs from the original site (the baseline) here, checked as RDC Admin:\n- Layout: the original has a document matrix table (316 rows), Vercel has none\n- Filters: the per-document Category and Typology multi-selects (40) are not on Vercel\n- Buttons missing on Vercel: Save Readiness Docs\n\nOriginal: https://evims.rdc8ims.online/rdc_dashboard/readiness_docs.php\nVercel: https://evims.vercel.app/scoring/readiness-docs\nFound by rdc-tester (npm run compare, then npm run evidence). Screenshots with each difference boxed in red are in the Freedcamp task comments."
+  }
+ ]
+}

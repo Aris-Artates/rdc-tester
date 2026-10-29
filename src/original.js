@@ -55,6 +55,8 @@ export async function openOriginal(page, path) {
   if (resp?.error) return { state: 'crashed', detail: 'Navigation failed: ' + resp.error.message.split('\n')[0] };
   await settle(page);
   if (await page.locator(LOGIN_FORM).count()) return { state: 'logged-out', detail: 'Original site shows its login page' };
+  // Signed-out visitors are also sent to WordPress's own login page, which has a different form.
+  if (/\/wp-login\.php/.test(new URL(page.url()).pathname)) return { state: 'logged-out', detail: 'Original site sent the visitor to /wp-login.php' };
   if (resp && resp.status() >= 400) return { state: 'crashed', detail: `Original site answered HTTP ${resp.status()}` };
   return { state: 'allowed', detail: 'Page loaded' };
 }

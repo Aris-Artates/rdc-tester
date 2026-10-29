@@ -57,11 +57,11 @@ var RQA_TC_ORDER = ['id', 'devTicket', 'module', 'title', 'kind', 'source', 'ste
   'reworkedBy', 'result', 'checkedAt', 'testedBy', 'notes', 'shot', 'devTitle', 'implemented', 'remarks'];
 var RQA_LOG_HEADERS = ['TC ID', 'Dev Ticket', 'Tested By', 'Checked At', 'Environment', 'Result', 'Notes', 'Screenshot'];
 
-var RQA_S = { inDev: 'In Dev', ready: 'Ready for QA', passed: 'Passed', failed: 'Failed', fixing: 'Fixing',
+var RQA_S = { noProgress: 'No Progress', inDev: 'In Dev', ready: 'Ready for QA', passed: 'Passed', failed: 'Failed', fixing: 'Fixing',
   retest: 'Ready for Re-test', reworked: 'Reworked', closed: 'Closed' };
 var RQA_LISTS = {
   'Case Status': ['Active', 'Reworked', 'Closed'],
-  'Ticket Status': [RQA_S.inDev, RQA_S.ready, RQA_S.failed, RQA_S.fixing, RQA_S.retest, RQA_S.passed, RQA_S.reworked, RQA_S.closed],
+  'Ticket Status': [RQA_S.noProgress, RQA_S.inDev, RQA_S.ready, RQA_S.failed, RQA_S.fixing, RQA_S.retest, RQA_S.passed, RQA_S.reworked, RQA_S.closed],
   'Result': ['Pass', 'Fail', 'Blocked', 'Not Implemented'],
   'Kind': ['Functional', 'Logic', 'Data', 'Access', 'Pending', 'Manual'],
   'Dev': ['Aris', 'Jondie', 'Shean', 'Kenneth', 'Kurt'],
@@ -82,7 +82,7 @@ var RQA_DEFAULT_SETTINGS = [
   ['Freedcamp: complete task when ticket Passed/Closed', 'Yes'],
 ];
 var RQA_STATUS_COLOURS = {
-  'In Dev': '#e8eefc', 'Ready for QA': '#fff3cd', 'Failed': '#f8d7da', 'Fixing': '#fde2c8', 'Ready for Re-test': '#ffe08a',
+  'No Progress': '#f1f3f4', 'In Dev': '#e8eefc', 'Ready for QA': '#fff3cd', 'Failed': '#f8d7da', 'Fixing': '#fde2c8', 'Ready for Re-test': '#ffe08a',
   'Passed': '#d4edda', 'Reworked': '#e6dcf5', 'Closed': '#e0e0e0',
 };
 var RQA_RESULT_COLOURS = { 'Pass': '#d4edda', 'Fail': '#f8d7da', 'Blocked': '#fff3cd', 'Not Implemented': '#d6d8f5' };
@@ -94,6 +94,7 @@ function onOpen() {
     .addItem('Set up / repair spreadsheet', 'rqaSetupSheet')
     .addItem('Refresh statuses', 'rqaRefresh')
     .addItem('Sync test cases from rdc-tester', 'rqaSyncTestsFromRepo')
+    .addItem('Import parity tickets from rdc-tester', 'rqaImportTicketsFromRepo')
     .addSeparator()
     .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
     .addItem('Fix Freedcamp task: name, assignee, followers & dates (selected tickets)', 'rqaFixFreedcampPeople')
@@ -180,7 +181,8 @@ function rqaNewTicket_(sh, opts) {
     set('ticket', num + ' | ' + (opts && opts.title ? opts.title : ''));
     set('time', Utilities.formatDate(now, RQA_TZ, 'hh:mm a'));
     set('date', new Date(Utilities.formatDate(now, RQA_TZ, 'yyyy/MM/dd')));
-    set('status', RQA_S.inDev);
+    set('status', opts && opts.status ? opts.status : RQA_S.inDev);
+    if (opts && opts.desc) set('desc', opts.desc);
     if (opts && opts.dev) set('dev', opts.dev);
     if (opts && opts.fixOf) set('fixOf', Number(opts.fixOf));
     if (opts && opts.parentUrl && h[RQA_TK.parent] != null) {
@@ -923,6 +925,45 @@ function rqaSyncTestsFromRepo() {
 }
 var RQA_CASES_URL = 'https://raw.githubusercontent.com/Aris-Artates/rdc-tester/main/apps-script/test-cases.json';
 
+/**
+ * RDC QA > Import parity tickets from rdc-tester: the differences `npm run evidence` found between the original
+ * site and Vercel (apps-script/parity-tickets.json). Each new one becomes a Dev Tickets row with no Dev and status
+ * No Progress, and an unassigned No Progress Freedcamp task. A ticket whose title is already on the sheet is skipped.
+ */
+function rqaImportTicketsFromRepo() {
+  var ui = SpreadsheetApp.getUi();
+  var res = UrlFetchApp.fetch(RQA_IMPORT_URL + '?t=' + Date.now(), { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return ui.alert('Could not read the parity tickets from GitHub (HTTP ' + res.getResponseCode() + ').');
+  var list = JSON.parse(res.getContentText()).tickets || [];
+  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS), h = rqaHeaders_(sh, RQA_T.head);
+  // Sheets made before "No Progress" existed: add it to the status dropdown's list in Settings.
+  var st = SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS), statuses = rqaListValues_(st, 'Ticket Status');
+  if (statuses.indexOf(RQA_S.noProgress) < 0) st.getRange(statuses.length + 2, RQA_LIST_KEYS.indexOf('Ticket Status') + 1).setValue(RQA_S.noProgress);
+  var last = rqaLastTicketRow_(sh, h);
+  var have = {};
+  if (last >= RQA_T.first) sh.getRange(RQA_T.first, h[RQA_TK.ticket] + 1, last - RQA_T.first + 1, 1).getDisplayValues().forEach(function (v) {
+    var t = rqaParseTicket_(v[0]);
+    if (t) have[(t.type + ': ' + t.title).toLowerCase()] = true;
+  });
+  var made = [], skipped = [], failed = [];
+  list.forEach(function (t) {
+    if (have[t.title.toLowerCase()]) return skipped.push(t.title);
+    var num = rqaNewTicket_(sh, { title: t.title, status: RQA_S.noProgress, desc: t.description });
+    var row = rqaLastTicketRow_(sh, h), full = num + ' | ' + t.title;
+    try {
+      var task = rqaCreateFreedcampTask_(full, t.description, '', null, { open: true });
+      sh.getRange(row, h[RQA_TK.fc] + 1).clearDataValidations().setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
+      made.push(full + '  ->  Task ' + task.id);
+    } catch (err) {
+      failed.push(full + ': ' + String(err.message || err));
+    }
+  });
+  rqaRefresh();
+  ui.alert('Parity tickets imported', made.length + ' added (No Progress, no Dev, unassigned Freedcamp task), ' + skipped.length + ' already on the sheet' +
+    (failed.length ? ', ' + failed.length + ' without a Freedcamp task:\n' + failed.join('\n') : '.'), ui.ButtonSet.OK);
+}
+var RQA_IMPORT_URL = 'https://raw.githubusercontent.com/Aris-Artates/rdc-tester/main/apps-script/parity-tickets.json';
+
 // ================================================================ Freedcamp
 
 /*
@@ -1079,17 +1120,20 @@ function rqaFcDescription_(title, description) {
     'Sheet ticket: ' + esc(title) + '<br>Branch: ' + BRANCH_NAME(title);
 }
 
-function rqaCreateFreedcampTask_(title, description, dev, parentId) {
+function rqaCreateFreedcampTask_(title, description, dev, parentId, opts) {
+  var open = opts && opts.open; // unassigned, no dates, status No Progress: for a dev to pick up later
   var project = rqaSetting_('Freedcamp project ID');
   var today = Utilities.formatDate(new Date(), RQA_TZ, 'yyyy-MM-dd');
-  var people = rqaFcPeople_(dev);
-  var fields = { title: title, description: rqaFcDescription_(title, description), project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3,
-    assigned_to_id: people.assignee, start_date: today, due_date: today };
+  var people = open ? rqaFcPeople_('') : rqaFcPeople_(dev);
+  if (open) people.warnings = people.warnings.filter(function (w) { return w.indexOf('assigned to you') < 0; });
+  var fields = { title: title, description: rqaFcDescription_(title, description), project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3 };
+  if (open) fields.assigned_to_id = '0';
+  else { fields.assigned_to_id = people.assignee; fields.start_date = today; fields.due_date = today; }
   if (parentId) fields.h_parent_id = parentId;
   var data = rqaFc_('post', 'tasks', fields);
   var task = (data.tasks || [])[0] || {};
   if (!task.id) throw new Error('Freedcamp did not return the new task');
-  rqaFc_('post', 'tasks/' + task.id, { status: 2 });
+  if (!open) rqaFc_('post', 'tasks/' + task.id, { status: 2 });
   if (parentId && String(task.h_parent_id || '') !== String(parentId)) {
     var set = rqaFcSetParent_(task.id, parentId);
     if (set !== true) people.warnings.push(set);

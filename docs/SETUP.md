@@ -177,6 +177,25 @@ Click a cell to jump to that page's details: every difference, the button-by-but
 
 ![Report page detail](img/report-page-detail.png)
 
+### Turn the differences into tickets
+
+Make one picture per difference, with the original on the left, Vercel on the right and each difference boxed in red:
+
+```bash
+npm run evidence -- results/compare-<time>
+```
+
+The pictures go to `results/compare-<time>/evidence/`. Then write one Dev Ticket per page that differs:
+
+```bash
+npm run parity-tickets -- results/compare-<time>
+```
+
+Commit and push `apps-script/parity-tickets.json`, then in the sheet click **RDC QA > Import parity tickets from
+rdc-tester**. Each new ticket gets status **No Progress** and no Dev, and its Freedcamp task is unassigned. Tickets
+already on the sheet are skipped. The pictures stay on this PC because they show real project data: attach them to
+the Freedcamp tasks yourself. `evidence/shots-by-ticket.json` lists which pictures go with which ticket.
+
 ## 6. The same checks as sheet test cases
 
 Every page × role pair is also a test case in the sheet, so results land on **Test Cases** and the dashboards:
