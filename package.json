@@ -14,7 +14,8 @@
     "accounts": "node src/accounts.js",
     "compare": "node src/compare.js",
     "evidence": "node src/evidence.js",
-    "parity-tickets": "node src/parity-tickets.js"
+    "parity-tickets": "node src/parity-tickets.js",
+    "bookmarklet": "node src/bookmarklet.js"
   },
   "dependencies": {
     "dotenv": "16.4.5",
