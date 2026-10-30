@@ -90,6 +90,17 @@ if (notInSheet.length) console.log(`  Not in the sheet (run "npm run sync-sheet"
 
 if (opt('dry')) { console.log(`Dry run: ${send.length} would be sent.`); process.exit(0); }
 if (!send.length) { console.log('Nothing to send.'); process.exit(0); }
-const { written, skipped, older } = await pushResults(send);
+// Small batches with a long wait: each result is several cell writes (and maybe a Drive upload) in the sheet,
+// and Apps Script allows a call up to 6 minutes. If one still times out, running this again carries on, because
+// whatever the sheet saved is skipped next time.
+let out;
+try {
+  out = await pushResults(send, { chunkSize: 10, timeoutMs: 330000, onChunk: (n, total) => process.stdout.write(`\r  Sent ${n} of ${total}`) });
+  process.stdout.write('\n');
+} catch (e) {
+  console.log(`\n${e.message}. ${e.written || 0} written before that. Run npm run push-results again to send the rest.`);
+  process.exit(1);
+}
+const { written, skipped, older } = out;
 console.log(`Written to the sheet: ${written} of ${send.length}.${skipped.length ? ` Refused as Closed / Reworked: ${skipped.join(', ')}.` : ''}`);
 if (older.length) console.log(`  Logged only (the sheet has a newer result): ${older.join(', ')}`);

@@ -12,15 +12,16 @@ export const sheetConfigured = () => !!(config.webappUrl && config.token);
 /**
  * Google hands a web app's answer over through a second address, and that hand-off sometimes
  * fails with an HTML page. Large answers come gzipped; a non-JSON page is retried.
+ * A write that times out is not retried: the sheet may still have saved it, and a retry would save it twice.
  */
-async function call(method, params, body) {
+async function call(method, params, body, { timeoutMs = 60000 } = {}) {
   if (!sheetConfigured()) throw new Error('SHEET_WEBAPP_URL / SHEET_TOKEN missing in .env');
   const u = new URL(config.webappUrl);
   if (method === 'GET') { u.searchParams.set('token', config.token); for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v); }
   let lastErr = '';
   for (let attempt = 1; attempt <= 4; attempt++) {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 60000);
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const res = await fetch(u, method === 'GET' ? { redirect: 'follow', signal: ctl.signal }
         : { method: 'POST', redirect: 'follow', signal: ctl.signal, headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ token: config.token, ...body }) });
@@ -36,7 +37,8 @@ async function call(method, params, body) {
       if (!/did not return JSON/.test(lastErr)) break;
     } catch (e) {
       if (/^Sheet refused/.test(e.message)) throw e;
-      lastErr = 'No answer from the web app: ' + (e.name === 'AbortError' ? 'timed out' : e.message);
+      lastErr = 'No answer from the web app: ' + (e.name === 'AbortError' ? `timed out after ${Math.round(timeoutMs / 1000)}s` : e.message);
+      if (e.name === 'AbortError' && method === 'POST') break;
     } finally { clearTimeout(timer); }
     if (attempt < 4) await new Promise(r => setTimeout(r, 3000 * attempt));
   }
@@ -78,17 +80,20 @@ export async function loadSheetRows() {
 export const isRetired = row => /^(closed|reworked|cancel+ed)$/i.test(String(row?.caseStatus ?? row?.ticketStatus ?? '').trim());
 
 /** Append results to the Check Log and update each test's latest result. Closed / Reworked cases are refused by the sheet too. */
-export async function pushResults(results) {
+export async function pushResults(results, { chunkSize = 40, timeoutMs = 60000, onChunk } = {}) {
   let written = 0, skipped = [], unknown = [], older = [];
-  for (let i = 0; i < results.length; i += 40) {
-    const chunk = results.slice(i, i + 40).map(r => ({
+  for (let i = 0; i < results.length; i += chunkSize) {
+    const chunk = results.slice(i, i + chunkSize).map(r => ({
       tcId: r.id, checker: r.checker || config.checker, env: r.env || 'Vercel', result: r.result, notes: r.notes,
       ...(r.checkedAt ? { checkedAt: r.checkedAt } : {}),
       screenshot: r.screenshot && fs.existsSync(r.screenshot) ? { name: path.basename(r.screenshot), base64: fs.readFileSync(r.screenshot).toString('base64') } : null,
     }));
-    const res = await call('POST', null, { action: 'results', rows: chunk });
+    let res;
+    try { res = await call('POST', null, { action: 'results', rows: chunk }, { timeoutMs }); }
+    catch (e) { e.written = written; throw e; }
     written += res.written; skipped = skipped.concat(res.skippedCancelled || []);
     unknown = unknown.concat(res.unknown || []); older = older.concat(res.older || []);
+    onChunk?.(Math.min(i + chunkSize, results.length), results.length);
   }
   return { written, skipped, unknown, older };
 }
