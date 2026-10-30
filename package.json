@@ -9,6 +9,7 @@
     "qa:dry": "node src/run.js --dry",
     "qa:list": "node src/run.js --list",
     "sync-sheet": "node src/sync.js",
+    "push-results": "node src/push-results.js",
     "ui": "node src/ui/server.js",
     "setup": "npx playwright install chromium",
     "accounts": "node src/accounts.js",

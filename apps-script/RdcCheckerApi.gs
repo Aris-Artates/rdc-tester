@@ -16,8 +16,10 @@
  *
  * Web app for the automated checker (Deploy > Web app, Execute as: Me, Who has access: Anyone),
  * every request carries the token in Script Property QA_TOKEN (menu: RDC QA > Create checker token):
- *   GET  ?token=..&action=tests -> { rows: [ { id, module, title, kind, reference, caseStatus, devTicket, latest } ] }
- *   POST { token, action: 'results', rows: [ { tcId, checker, env, result, notes, screenshot } ] }
+ *   GET  ?token=..&action=tests -> { rows: [ { id, module, title, kind, reference, caseStatus, devTicket, latest, checkedAt } ] }
+ *   POST { token, action: 'results', rows: [ { tcId, checker, env, result, notes, screenshot, checkedAt? } ] }
+ *        checkedAt (ISO) is when an earlier run checked it (npm run push-results); a result older than the
+ *        test's Last Checked only goes to the Check Log.
  *   POST { token, action: 'sync', tests: [ { id, module, title, kind, steps, expected, reference, pending } ], update }
  *
  * Freedcamp (menu: RDC QA > Connect Freedcamp): ticking a ticket's Freedcamp box creates the task with
@@ -808,7 +810,8 @@ function rqaReadCases_() {
     var id = String(g(r, 'id')).trim();
     if (!id) return;
     rows.push({ row: i + 2, id: id, module: g(r, 'module'), title: g(r, 'title'), kind: g(r, 'kind'), source: g(r, 'source'),
-      reference: g(r, 'reference'), caseStatus: String(g(r, 'caseStatus') || 'Active'), devTicket: String(g(r, 'devTicket')), latest: g(r, 'result') });
+      reference: g(r, 'reference'), caseStatus: String(g(r, 'caseStatus') || 'Active'), devTicket: String(g(r, 'devTicket')), latest: g(r, 'result'),
+      checkedAt: g(r, 'checkedAt') instanceof Date ? g(r, 'checkedAt') : null });
   });
   return { sh: sh, h: h, rows: rows, lastRow: last };
 }
@@ -847,7 +850,7 @@ function rqaWriteResults_(items) {
   var C = rqaReadCases_();
   var byId = {};
   C.rows.forEach(function (r) { byId[r.id] = r; });
-  var now = new Date(), folder = null, out = [], skipped = [], unknown = [];
+  var now = new Date(), folder = null, out = [], skipped = [], unknown = [], older = [];
   items.forEach(function (it) {
     var row = byId[it.tcId];
     if (!row) { unknown.push(it.tcId); return; }
@@ -862,18 +865,22 @@ function rqaWriteResults_(items) {
       }
       link = folder.createFile(Utilities.newBlob(Utilities.base64Decode(it.screenshot.base64), 'image/png', it.screenshot.name)).getUrl();
     }
-    out.push({ it: it, row: row, link: link });
+    var at = it.checkedAt ? new Date(it.checkedAt) : now;
+    if (isNaN(at.getTime())) at = now;
+    out.push({ it: it, row: row, link: link, at: at });
   });
   rqaAppendLog_(out.map(function (o) {
-    return { id: o.it.tcId, ticket: o.row.devTicket, who: o.it.checker || 'RDC QA Bot', at: now, env: o.it.env || 'Vercel', result: o.it.result, notes: o.it.notes || '', link: o.link };
+    return { id: o.it.tcId, ticket: o.row.devTicket, who: o.it.checker || 'RDC QA Bot', at: o.at, env: o.it.env || 'Vercel', result: o.it.result, notes: o.it.notes || '', link: o.link };
   }));
   out.forEach(function (o) {
+    // An earlier run's result never replaces a newer one: it stays in the Check Log only.
+    if (o.row.checkedAt && o.row.checkedAt > o.at) { older.push(o.it.tcId); return; }
     var set = function (k, v) { if (C.h[RQA_TC[k]] != null) C.sh.getRange(o.row.row, C.h[RQA_TC[k]] + 1).setValue(v); };
-    set('result', o.it.result); set('checkedAt', now); set('testedBy', o.it.checker || 'RDC QA Bot');
+    set('result', o.it.result); set('checkedAt', o.at); set('testedBy', o.it.checker || 'RDC QA Bot');
     set('notes', o.it.notes || ''); set('shot', o.link);
     if (o.it.result !== 'Blocked') set('implemented', o.it.result === 'Not Implemented' ? 'No' : 'Yes');
   });
-  return { ok: true, written: out.length, skippedCancelled: skipped, unknown: unknown };
+  return { ok: true, written: out.length, skippedCancelled: skipped, unknown: unknown, older: older };
 }
 
 function rqaSyncTests_(tests, update) {

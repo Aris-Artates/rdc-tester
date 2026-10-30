@@ -79,16 +79,18 @@ export const isRetired = row => /^(closed|reworked|cancel+ed)$/i.test(String(row
 
 /** Append results to the Check Log and update each test's latest result. Closed / Reworked cases are refused by the sheet too. */
 export async function pushResults(results) {
-  let written = 0, skipped = [];
+  let written = 0, skipped = [], unknown = [], older = [];
   for (let i = 0; i < results.length; i += 40) {
     const chunk = results.slice(i, i + 40).map(r => ({
-      tcId: r.id, checker: config.checker, env: 'Vercel', result: r.result, notes: r.notes,
+      tcId: r.id, checker: r.checker || config.checker, env: r.env || 'Vercel', result: r.result, notes: r.notes,
+      ...(r.checkedAt ? { checkedAt: r.checkedAt } : {}),
       screenshot: r.screenshot && fs.existsSync(r.screenshot) ? { name: path.basename(r.screenshot), base64: fs.readFileSync(r.screenshot).toString('base64') } : null,
     }));
     const res = await call('POST', null, { action: 'results', rows: chunk });
     written += res.written; skipped = skipped.concat(res.skippedCancelled || []);
+    unknown = unknown.concat(res.unknown || []); older = older.concat(res.older || []);
   }
-  return { written, skipped };
+  return { written, skipped, unknown, older };
 }
 
 /** Add tests that are in the code but not in the sheet; refresh descriptions of active ones. */
