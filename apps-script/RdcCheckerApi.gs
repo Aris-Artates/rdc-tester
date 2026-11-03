@@ -25,8 +25,8 @@
  * Freedcamp (menu: RDC QA > Connect Freedcamp): ticking a ticket's Freedcamp box creates the task with
  * the team's fixed settings. Parent Task (a Freedcamp task link) makes it a subtask of that task; a fix ticket
  * gets its main ticket's task there automatically. Two-way sync (every 15 min, and the "Sync Freedcamp" button
- * on Dev Tickets): Passed / Closed tickets complete their task; a task completed in Freedcamp sets its ticket to
- * Ready for QA, unless the ticket is already Passed or Closed.
+ * on Dev Tickets): Passed / Closed tickets complete their task; a task completed in Freedcamp moves an In Dev
+ * ticket to Ready for QA and a Fixing or Reworked ticket to Ready for Re-test; other statuses stay as they are.
  */
 
 var RQA_DASH = 'Dashboard', RQA_TICKETS = 'Dev Tickets', RQA_CASES = 'Test Cases', RQA_QA = 'QA Dashboard',
@@ -320,6 +320,8 @@ function rqaRefresh() {
     var fails = t.active.filter(function (c) { return c.result === 'Fail'; });
     if (fails.length) {
       var fix = t.fixes[t.fixes.length - 1], failAt = lastFail(t);
+      // Set to Ready for Re-test (by Freedcamp or by hand) after the last fail: wait for QA's next result.
+      if (t.status === RQA_S.retest && t.readyAt && (!failAt || t.readyAt > failAt)) return RQA_S.retest;
       if (!fix || fix.status === RQA_S.failed) return RQA_S.failed;
       if ((fix.status === RQA_S.ready || fix.status === RQA_S.passed) && fix.readyAt && (!failAt || fix.readyAt > failAt)) return RQA_S.retest;
       if (fix.status === RQA_S.ready && fix.readyAt && failAt && failAt >= fix.readyAt) { fix.status = RQA_S.failed; return RQA_S.failed; }
@@ -1266,10 +1268,17 @@ function rqaParentEdited_(sh, h, r) {
  * Two-way status sync between Dev Tickets and Freedcamp. `all` = every ticket with a task (the button / menu,
  * with the clicker's key); otherwise only the tickets this person's trigger handles.
  *   Passed / Closed ticket -> its task is marked complete.
- *   Task completed in Freedcamp -> the ticket is set to Ready for QA (once per completion), unless it is
- *   already Passed, Closed or Reworked. Reopening the task in Freedcamp lets it happen again next time.
+ *   Task completed in Freedcamp (once per completion) -> In Dev becomes Ready for QA, Fixing or Reworked becomes
+ *   Ready for Re-test; every other status (No Progress, Ready for QA, Failed, Ready for Re-test, Passed, Closed)
+ *   stays. Closed is only ever set by hand. Reopening the task in Freedcamp lets it happen again next time.
  *   A task this sync completed is reopened when its ticket stops being Passed / Closed.
  */
+/** Where a ticket goes when its Freedcamp task is completed; statuses not listed stay as they are. */
+var RQA_FC_PULL = {};
+RQA_FC_PULL[RQA_S.inDev] = RQA_S.ready;
+RQA_FC_PULL[RQA_S.fixing] = RQA_S.retest;
+RQA_FC_PULL[RQA_S.reworked] = RQA_S.retest;
+
 function rqaFcTwoWay_(all) {
   var keys = rqaFcKeys_(), sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS);
   var out = { completed: [], ready: [], reopened: [], errors: [] };
@@ -1295,11 +1304,12 @@ function rqaFcTwoWay_(all) {
         return;
       }
       if (done[id]) { rqaFc_('post', 'tasks/' + id, { status: 2 }); delete done[id]; out.reopened.push(num); return; }
-      if (st === RQA_S.reworked) return;
+      var next = RQA_FC_PULL[st];
+      if (!next && !pulled[id]) return;
       var t = (rqaFc_('get', 'tasks/' + id).tasks || [])[0] || {};
       if (String(t.status) === '1') {
-        if (!pulled[id] && st !== RQA_S.ready && st !== RQA_S.retest) {
-          sh.getRange(RQA_T.first + i, h[RQA_TK.status] + 1).setValue(RQA_S.ready);
+        if (!pulled[id] && next) {
+          sh.getRange(RQA_T.first + i, h[RQA_TK.status] + 1).setValue(next);
           sh.getRange(RQA_T.first + i, h[RQA_TK.readyAt] + 1).setValue(new Date());
           out.ready.push(num); changed = true;
         }
