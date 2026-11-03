@@ -943,7 +943,7 @@ function rqaImportTicketsFromRepo() {
   var ui = SpreadsheetApp.getUi();
   var res = UrlFetchApp.fetch(RQA_IMPORT_URL + '?t=' + Date.now(), { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) return ui.alert('Could not read the parity tickets from GitHub (HTTP ' + res.getResponseCode() + ').');
-  var list = JSON.parse(res.getContentText()).tickets || [];
+  var json = JSON.parse(res.getContentText()), list = json.tickets || [];
   var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS), h = rqaHeaders_(sh, RQA_T.head);
   // Sheets made before "No Progress" existed: add it to the status dropdown's list in Settings.
   var st = SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS), statuses = rqaListValues_(st, 'Ticket Status');
@@ -957,10 +957,13 @@ function rqaImportTicketsFromRepo() {
   var made = [], skipped = [], failed = [];
   list.forEach(function (t) {
     if (have[t.title.toLowerCase()]) return skipped.push(t.title);
-    var num = rqaNewTicket_(sh, { title: t.title, status: RQA_S.noProgress, desc: t.description });
+    // A ticket (or the whole file) may name a Freedcamp parent task: the new task becomes its subtask.
+    var parent = String(t.parent || json.parent || '');
+    var parentUrl = parent ? 'https://freedcamp.com/view/' + rqaSetting_('Freedcamp project ID') + '/tasks/' + parent : '';
+    var num = rqaNewTicket_(sh, { title: t.title, status: RQA_S.noProgress, desc: t.description, parentUrl: parentUrl });
     var row = rqaLastTicketRow_(sh, h), full = num + ' | ' + t.title;
     try {
-      var task = rqaCreateFreedcampTask_(full, t.description, '', null, { open: true });
+      var task = rqaCreateFreedcampTask_(full, t.description, '', parent || null, { open: true });
       sh.getRange(row, h[RQA_TK.fc] + 1).clearDataValidations().setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
       made.push(full + '  ->  Task ' + task.id);
     } catch (err) {
