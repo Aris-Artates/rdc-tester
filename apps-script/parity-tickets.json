@@ -1,11 +1,184 @@
 {
- "exported": "2026-11-03T07:04:39.956Z",
- "from": "Kenneth gap list, Freedcamp task 74048949 (ticket 142; the rest are listed in its Freedcamp comment)",
+ "exported": "2026-11-03T07:34:04.887Z",
+ "from": "Kenneth gap list, Freedcamp task 74048949 (142 and 143 already on the sheet)",
  "parent": "74048949",
  "tickets": [
   {
-   "title": "BUG: Projects - Proposal Status - Submit and Send to RDC save the project status so proposals reach Approval Requests",
-   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- changeProposalStatus and setProposalStatus (projects.functions.ts) never write ppa_sub_items.project_status, which createProposal sets to Draft.\n- Approval Requests (approval-requests.functions.ts) and the portal (portal.functions.ts) filter on it, so a proposal made and submitted in the new app never appears in Approval Requests.\n- Original: submit sets 'Submit to Agency Head'; Send to RDC sets 'Sent to RDC' with rdc_sender and sent_to_rdc_timestamp; approve/return leave it."
+   "title": "FEAT: Projects - Profile - Details - Save every detail and the locations",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- saveProjectDetails misses FY, tier, agency, program, typology, category_id, rationale, supp_functionality, location columns, caption, related.\n- Locations live only in sessionLocations (ProjectLocations.tsx) and are never saved to rdcwp_ppa_locations. FY/Tier/Typology/Category/Classification are not editable.",
+   "task": "74049088",
+   "dev": "Aris",
+   "status": "In Dev"
+  },
+  {
+   "title": "FEAT: Accounts - Agencies - Save sector, links, officials and logo, and assign sectors on create",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- add_agency 31 / save_agency 156: saveAgency writes '' for sector, fb_link, twitter_link, website; no agency_officials; no logo upload; no automatic agency_sectors row on create.\n- Remove the stale in-memory pages accounts.agencies.new.tsx and accounts.agencies.gdrive.tsx (agencyStore); the real path is saveAgency.\n- Overlaps ticket 141 (Agencies Edit Page): coordinate before starting.",
+   "task": "74049060"
+  },
+  {
+   "title": "BUG: Accounts - Agencies - Departments - Deleting a department clears it from its projects",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- delete_dept_dist 9165: deleteDepartment does not clear ppa_sub_items.district_office.\n- Remove the stale deptStore in components/DeptDialog.tsx.",
+   "task": "74049062"
+  },
+  {
+   "title": "FEAT: Settings - Classification - Delete a classification",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- delete_project_classification 7142 (project_classifications): no server function and no button.",
+   "task": "74049063"
+  },
+  {
+   "title": "FEAT: Settings - Support to Functionality - Add, edit and delete entries",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- add/save/delete_support 3358/3406/3389 (support_to_functionality): no function and no page; the table is never read.",
+   "task": "74049065"
+  },
+  {
+   "title": "FEAT: Settings - Application - Save the application settings",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- save_settings 3438 (app_settings): settings.application.tsx keeps them in sessionStorage only; the mobile app QR code should use the saved settings.",
+   "task": "74049066"
+  },
+  {
+   "title": "BUG: Settings - Category - Delete message names the category",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- settings.category.tsx:42 toast says \"Tier type deleted\".",
+   "task": "74049067"
+  },
+  {
+   "title": "FEAT: Accounts - Users - Accessible years, notify user and agency-scoped user management",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- add_new_user_front 461 / update_user_front 631 / delete_user_front 588 (users + usermeta): no accessible_yr; \"notify user\" is a no-op (UserDialog.tsx:102); admin-only, while the original let agency roles manage their agency users.",
+   "task": "74049069"
+  },
+  {
+   "title": "FEAT: Accounts - Users - Upload users from CSV",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- upload_users_csv 4680 (users + usermeta): missing.",
+   "task": "74049071"
+  },
+  {
+   "title": "FEAT: Accounts - Roles - Save role changes",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- accounts.roles Save is disabled (:274).",
+   "task": "74049073"
+  },
+  {
+   "title": "FEAT: Profile - Username, stock avatar and default fiscal year",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- save_user_profile 4981: no own-username change. set_profile_avatar 4916: no stock-avatar choice.\n- set_default_fiscal_year 8028 (usermeta default_fy) / change_fy_default 878 (WP option): missing.",
+   "task": "74049075"
+  },
+  {
+   "title": "FEAT: Communication - Notifications - Preset messages",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- add/update/delete_preset 5066/5097/5128 (preset_messages): AddNotificationDialog.tsx keeps them in local state only.",
+   "task": "74049076"
+  },
+  {
+   "title": "FEAT: Communication - Notifications - Add, resend and cancel notifications",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- add_notif_for 51 / resend 224 / cancel 541 (notifications, _reminders, _recipients, _receipt, _cancel): only automatic status-change notifications are inserted; no reminders or receipts.\n- communication.notifications add and row actions are disabled.",
+   "task": "74049077"
+  },
+  {
+   "title": "FEAT: Settings - Notifications - Notification lists and automation settings",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- save/add/delete_notiflist 9391/9439/9422 (notification_lists) and save_notif_automation 9470 (notification_settings): missing; read only as an on/off flag.",
+   "task": "74049079"
+  },
+  {
+   "title": "FEAT: Communication - Messages - Send, read and delete messages",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- send_message 5420 / read_message 5465 / delete_message 5485 (messages): the page is read-only and delete is disabled.",
+   "task": "74049081"
+  },
+  {
+   "title": "FEAT: Communication - Email - Send notification emails through a mail provider",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- ims_queue_email_notif 977 (wp_mail): nothing sends email today; no mail provider in src/. Drop the original hardcoded Cc address.\n- Communication \"Send An Email\" is coming soon. Needs a provider decision first.",
+   "task": "74049082"
+  },
+  {
+   "title": "FEAT: Communication - SMS Gateway - Gateway polling and delivery callbacks",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- ims_queue_sms_notif 923 + gateway nopriv endpoints 596-920 (notifications/_recipients/_receipt/_cancel): no API route and no scheduled job; this also delivers scheduled send_on reminders.",
+   "task": "74049083"
+  },
+  {
+   "title": "FEAT: Login - Forgot Password - Reset flow and new-user invite link",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- retrieve_password_message 962: no reset flow. user_register 1280 emailed credentials: send an invite/reset link instead of a plaintext password. Needs the mail provider.",
+   "task": "74049085"
+  },
+  {
+   "title": "FEAT: Projects - List - Delete a project and save it as a clone",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- delete_ppa 1064 (ppa_sub_items) and project_save_as_clone 10672 (ppa_table, ppa_sub_items + children): missing.",
+   "task": "74049086"
+  },
+  {
+   "title": "FEAT: Projects - Profile - Dev Goals, Risk Management and Docs & Remarks save every field",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- Dev Goals: no expected_outcome, gender_responsiveness; writes agency_remarks instead of drrcca_remarks.\n- Risk Management: no risk_description, gdrive_url.\n- Docs & Remarks: missing project_support_title, fund_src, fund_src_yr, amount_appropriated, total_amount_appropriated, status_of_previously_funded.",
+   "task": "74049090"
+  },
+  {
+   "title": "FEAT: Projects - Profile - Budget - Utilization rates, agency utilization and clearing BFARs",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- Budget utilization rows 7368/7403/7433: saveOfficeBudget stores obligation/disbursement rates as '' (:1104).\n- save_agency_utilization 7452 (agency_utilization_rate) and clearBfarsData 11379 (budget_monitoring): missing.",
+   "task": "74049091"
+  },
+  {
+   "title": "FEAT: Projects - Profile - Project supports and related projects",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- save_project_supports 5895 / save_related_projects 5970 (project_supports, related_projects, dtbl 3289): the new app only has free-text columns.",
+   "task": "74049092"
+  },
+  {
+   "title": "FEAT: Projects - Profile - Project access",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- save_project_access 4522 (wp_options, project_access): missing.",
+   "task": "74049093"
+  },
+  {
+   "title": "FEAT: Projects - Uploads - Forms A-1, C, D, comments form and deleting uploaded workbooks",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- upload_ppa_form_c 1097 / form_d 1235 / upload_ppa_csv type a1 / upload_comments_form 1665 (csv_uploads, budget_monitoring, top_risks, ppa_table, comments): only Form A-2 is ported; deleteCsvUpload only handles A-2.\n- delete_xlsx_uploaded 10640 (ppa_table, xlsx_uploads): missing.",
+   "task": "74049094"
+  },
+  {
+   "title": "FEAT: Reviews - Reviewer - Save scores and comments and reply to review comments",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- save_review_changes 8046 / reply_review_comment 8264 (project_review_comments, project_reviews_tbl, review_answers -> review_states): reviewers cannot enter scores or comments.\n- DBM / NEDA comment views (dbm/neda_comments.php): reviews.tsx has no DBM/NEDA tabs.",
+   "task": "74049096"
+  },
+  {
+   "title": "BUG: Projects - Comments - Save to the original comments table with replies, public, RIATF and reactions",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- add_new_project_comment / reply / public / riatf 1397/1938/6622/11294: postComment writes a new project_comments table, so comments are split from reviews.tsx (reads rdcwp_project_comments); no public, no RIATF, no admin delete of others' comments.\n- trigger_reaction 1771 (project_reacts, agency_reacts): likeComment uses a new table; project likes use localStorage (projects.$ppaId.tsx:441-461); Dislike has no handler; 7 reaction types never written.",
+   "task": "74049097"
+  },
+  {
+   "title": "FEAT: Accounts - Agencies - Agency comments",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- Six handlers 1531/2131/6796/11358/11341/11586 (agency_comments, dtbl 1463): never referenced.",
+   "task": "74049098"
+  },
+  {
+   "title": "FEAT: Projects - Suggestions - Save suggestions and replies",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- 5505/5740/5759/5788 (project_suggestions, suggestion_replies): the page uses sessionStorage; project-suggestions.ts:3 wrongly says no legacy table exists.",
+   "task": "74049100"
+  },
+  {
+   "title": "BUG: Requests - Research and Clearance - Recipients, project link and saved rows",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- add_research_request 6381: the new app uses its own research_requests table (migration 20261016175343), so rdcwp_research_requests rows are invisible and no _to recipients are saved. Needs a decision: legacy tables or migrate.\n- add_clearance_request 6155: project_id is always 0 (legacy-clearances.functions.ts:185).",
+   "task": "74049101"
+  },
+  {
+   "title": "BUG: Projects - Proposal Notifications - Notify the right people on submit, status override and events",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- Submit notifies all agency users instead of the Agency Head; setProposalStatus notifies no one; in-app only.\n- Missing events: ppa_review_state_changed 1009, ppa_for_chief_review 1098, project_comment_added/_reply 1177/1259, agency_comment_added/_reply 1391/1466, agency_message_added 1590.",
+   "task": "74049102"
+  },
+  {
+   "title": "FEAT: Projects - Send to RDC - Bulk send and Tier 2 rank check",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- update_ppa_stats 8213: bulk Send to RDC is single only. set_action_submit_to_rdc 8833: no Tier 2 rank-required check.",
+   "task": "74049104"
+  },
+  {
+   "title": "BUG: Projects - Profile - Toolbar, composer name and sample data saved as real data",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- Toolbar Print/Share/Upload are no-ops (projects.$ppaId.tsx:262); composer name hardcoded \"Symph T. Staff\" (:414, :503).\n- Placeholder values shown when data is missing (:315, :331-343); seeded DPWH remarks / seedRisks in ProposalTabs.tsx:69, 307 would be saved as real data on Save. ContactForm writes a new contact_messages table.",
+   "task": "74049105"
+  },
+  {
+   "title": "FEAT: Records - Budget monitoring, risk plans, forms and procurement lists",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- records.$section.tsx:26 placeholders: budget absorption / utilization monitoring (budget_monitoring, get_all_budget_monitoring dtbl 967), risk management plans (top_risks, dtbl 1015), Forms A-1 / C / D / IP, comments update, annual procurement.",
+   "task": "74049109"
+  },
+  {
+   "title": "CHORE: Analytics - Summary cards - Check against the original",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- Project-status summary cards (get_sp_projects, card_project_summary) and analytics.index.tsx \"coming soon\": verify against the original.",
+   "task": "74049110"
+  },
+  {
+   "title": "CHORE: Cleanup - Remove dead sample data and stale in-memory stores",
+   "description": "From Kenneth's gap list (Freedcamp task 74048949, UPDATE as of 11-03-2026): what the original site (rdcmonitor ajax.php / plugin.php) saves that the new app does not.\n- Dead sample arrays in lib/notifications.ts, lib/requests.ts, lib/reviews.ts, lib/monitoring.ts; components/AddNotificationDialog.tsx local store (once presets are saved).",
+   "task": "74049112"
   }
  ]
 }

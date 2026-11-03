@@ -938,6 +938,8 @@ var RQA_CASES_URL = 'https://raw.githubusercontent.com/Aris-Artates/rdc-tester/m
  * RDC QA > Import parity tickets from rdc-tester: the differences `npm run evidence` found between the original
  * site and Vercel (apps-script/parity-tickets.json). Each new one becomes a Dev Tickets row with no Dev and status
  * No Progress, and an unassigned No Progress Freedcamp task. A ticket whose title is already on the sheet is skipped.
+ * Optional per ticket: task (an existing Freedcamp task to link and rename instead of making one), dev, status;
+ * and parent (per ticket or for the whole file) to make the new task a subtask.
  */
 function rqaImportTicketsFromRepo() {
   var ui = SpreadsheetApp.getUi();
@@ -960,10 +962,13 @@ function rqaImportTicketsFromRepo() {
     // A ticket (or the whole file) may name a Freedcamp parent task: the new task becomes its subtask.
     var parent = String(t.parent || json.parent || '');
     var parentUrl = parent ? 'https://freedcamp.com/view/' + rqaSetting_('Freedcamp project ID') + '/tasks/' + parent : '';
-    var num = rqaNewTicket_(sh, { title: t.title, status: RQA_S.noProgress, desc: t.description, parentUrl: parentUrl });
+    var num = rqaNewTicket_(sh, { title: t.title, status: t.status || RQA_S.noProgress, desc: t.description, parentUrl: parentUrl, dev: t.dev || '' });
     var row = rqaLastTicketRow_(sh, h), full = num + ' | ' + t.title;
     try {
-      var task = rqaCreateFreedcampTask_(full, t.description, '', parent || null, { open: true });
+      // A ticket that already has a Freedcamp task (t.task) reuses it, renamed to the new ticket number.
+      var task = t.task ? { id: String(t.task), url: 'https://freedcamp.com/view/' + rqaSetting_('Freedcamp project ID') + '/tasks/' + t.task }
+        : rqaCreateFreedcampTask_(full, t.description, '', parent || null, { open: true });
+      if (t.task) rqaFc_('post', 'tasks/' + t.task, { title: full });
       sh.getRange(row, h[RQA_TK.fc] + 1).clearDataValidations().setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
       made.push(full + '  ->  Task ' + task.id);
     } catch (err) {
