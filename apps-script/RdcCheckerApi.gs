@@ -1062,13 +1062,18 @@ function rqaFc_(method, path, payload) {
   var keys = rqaFcKeys_();
   if (!keys) throw new Error('Freedcamp is not connected for you (RDC QA > Connect Freedcamp)');
   var key = keys.props.getProperty('FREEDCAMP_API_KEY'), secret = keys.props.getProperty('FREEDCAMP_API_SECRET');
-  var ts = String(Math.floor(Date.now() / 1000));
-  var hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, key + ts, secret)
-    .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
-  var url = 'https://freedcamp.com/api/v1/' + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(key) + '&timestamp=' + ts + '&hash=' + hash;
   var opts = { method: method, muteHttpExceptions: true };
   if (payload) { opts.contentType = 'application/json'; opts.payload = JSON.stringify(payload); }
-  var res = UrlFetchApp.fetch(url, opts);
+  // Freedcamp answers 429 (too many requests) when a whole sheet is read at once: wait and try again, up to ~1 min.
+  for (var attempt = 0, res; ; attempt++) {
+    var ts = String(Math.floor(Date.now() / 1000));
+    var hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, key + ts, secret)
+      .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+    var url = 'https://freedcamp.com/api/v1/' + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(key) + '&timestamp=' + ts + '&hash=' + hash;
+    res = UrlFetchApp.fetch(url, opts);
+    if (res.getResponseCode() !== 429 || attempt >= 5) break;
+    Utilities.sleep(Math.min(2000 * Math.pow(2, attempt), 20000));
+  }
   var body = {};
   try { body = JSON.parse(res.getContentText()); } catch (_) {}
   if (res.getResponseCode() >= 300 || (body.http_code && body.http_code >= 300)) throw new Error('Freedcamp ' + res.getResponseCode() + ': ' + (body.msg || res.getContentText().slice(0, 150)));
