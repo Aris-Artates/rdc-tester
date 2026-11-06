@@ -100,8 +100,36 @@ follower Meldz A.) is fully scripted. Ticking **Freedcamp** on a ticket:
 3. adds the followers from Settings (**Meldz A.**),
 4. turns the cell into a link to the task.
 
-Every 15 minutes, tasks of tickets that became **Passed** or **Closed** are marked **complete** in Freedcamp
-(and reopened if the ticket goes back to failing). Turn this off in Settings.
+### Keeping the sheet and Freedcamp in step: two buttons
+
+Above the **Freedcamp** column on Dev Tickets (and in the **RDC QA** menu):
+
+| Button | Use it when | Copies |
+|---|---|---|
+| **Sheet → Freedcamp** | you changed tickets in the sheet | the task takes the ticket's name, Description (plus the sheet ticket and branch lines), Dev as assignee, Date as start and due date, Parent Task, followers, and status |
+| **Freedcamp → Sheet** | someone changed tasks in Freedcamp | the ticket takes the task's name, description, assignee as Dev, start date as Date, parent task, and status |
+
+Both work the same way:
+
+1. Select the ticket rows you want (or nothing / a header cell for all), click the button.
+2. It asks **Yes** = only the selected tickets, **No** = every ticket.
+3. It lists every change, ticket by ticket. Nothing is saved until you press **OK**.
+
+Rules that keep it safe:
+
+- An empty value never wipes a filled one: a ticket with no Dev or Date leaves the task's, and an unassigned
+  task or one with no dates leaves the ticket's.
+- A task name is copied back only if it still starts with the same ticket number (`12 | ...`).
+- A Freedcamp assignee who is not in the Dev list (Settings) is skipped and named in the notes.
+- Status, **Sheet → Freedcamp**: Passed / Closed → Completed (if the Settings switch is Yes), In Dev → In Progress,
+  No Progress → Not Started. Ready for QA, Ready for Re-test, Failed, Fixing and Reworked leave the task as it is.
+- Status, **Freedcamp → Sheet**: a completed task moves No Progress / In Dev to **Ready for QA** and Fixing /
+  Reworked to **Ready for Re-test** (once per completion); a task In Progress moves No Progress to **In Dev**.
+  QA's statuses (Failed, Passed, Closed …) are never changed by Freedcamp.
+
+Every 15 minutes, only **statuses** sync on their own, for each connected dev's tickets: tasks of tickets that
+became **Passed** or **Closed** are marked **complete** (and reopened if the ticket goes back to failing; turn this
+off in Settings), and completed tasks move tickets as in the last rule above.
 
 ### Connecting: once per dev
 
@@ -126,9 +154,7 @@ step, the cell stays unticked and a message says why. If a Dev or follower name 
 the task is still created (assigned to the key's owner) and the message names who was not found.
 
 **Fixing an existing task** (e.g. after correcting a ticket's name): fix the ticket in the sheet (name, Description,
-Dev, or the **Date** with the date picker), select its row(s) on Dev Tickets, then *RDC QA > Fix Freedcamp task: name,
-assignee, followers & dates (selected tickets)*. The task gets the ticket's current name, a description with the
-current name and branch, the assignee and followers, and its start and due date set to that Date.
+Dev, or the **Date** with the date picker), select its row(s) on Dev Tickets, then click **Sheet → Freedcamp**.
 
 ## Recommended upgrades
 
