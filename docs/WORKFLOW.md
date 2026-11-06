@@ -106,8 +106,8 @@ Above the **Freedcamp** column on Dev Tickets (and in the **RDC QA** menu):
 
 | Button | Use it when | Copies |
 |---|---|---|
-| **Sheet → Freedcamp** | you changed tickets in the sheet | the task takes the ticket's name, Description (plus the sheet ticket and branch lines), Dev as assignee, Date as start and due date, Parent Task, followers, and status |
-| **Freedcamp → Sheet** | someone changed tasks in Freedcamp | the ticket takes the task's name, description, assignee as Dev, start date as Date, parent task, and status |
+| **Sheet → Freedcamp** | you changed tickets in the sheet | the task takes the ticket's name, Description (into an empty task), Dev as assignee, Date as start and due date, Parent Task, followers, and status |
+| **Freedcamp → Sheet** | someone changed tasks in Freedcamp | the ticket takes the task's name, description (into an empty ticket), assignee as Dev, start date as Date, parent task, and status |
 
 Both work the same way:
 
@@ -119,6 +119,9 @@ Rules that keep it safe:
 
 - An empty value never wipes a filled one: a ticket with no Dev or Date leaves the task's, and an unassigned
   task or one with no dates leaves the ticket's.
+- Descriptions only fill an empty side. When both are filled and differ (often the request in Freedcamp and the
+  dev's notes in the sheet), each keeps its own and the preview says so; edit the one you want by hand.
+  Differences in spacing or line breaks count as the same.
 - A task name is copied back only if it still starts with the same ticket number (`12 | ...`).
 - A Freedcamp assignee who is not in the Dev list (Settings) is skipped and named in the notes.
 - Status, **Sheet → Freedcamp**: Passed / Closed → Completed (if the Settings switch is Yes), In Dev → In Progress,

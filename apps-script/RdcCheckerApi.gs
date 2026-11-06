@@ -1362,7 +1362,15 @@ function rqaFcCleanDesc_(html) {
     .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&amp;/g, '&');
   return s.replace(/\s*Sheet ticket:[\s\S]*$/, '').replace(/[ \t]+\n/g, '\n').trim();
 }
-function rqaFcSameText_(a, b) { return String(a || '').replace(/\r/g, '').trim() === String(b || '').replace(/\r/g, '').trim(); }
+/** Same text, ignoring spacing and line breaks (Freedcamp's editor reflows them). */
+function rqaFcSameText_(a, b) { var n = function (s) { return String(s || '').replace(/\s+/g, ' ').trim(); }; return n(a) === n(b); }
+
+/** A task description (HTML) with its "Sheet ticket / Branch" lines replaced by the ones for `title`. */
+function rqaFcRefooter_(html, title) {
+  var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
+  var body = String(html || '').replace(/(\s|<br\s*\/?>|<p>\s*<\/p>)*(<p>)?\s*Sheet ticket:[\s\S]*$/i, '');
+  return (body ? body + '<br><br>' : '') + 'Sheet ticket: ' + esc(title) + '<br>Branch: ' + BRANCH_NAME(title);
+}
 
 /** A Freedcamp timestamp (seconds) as yyyy-MM-dd in Manila time; '' when unset. */
 function rqaFcDay_(ts) { return Number(ts) > 0 ? Utilities.formatDate(new Date(Number(ts) * 1000), RQA_TZ, 'yyyy-MM-dd') : ''; }
@@ -1485,9 +1493,13 @@ function rqaFcPushItem_(sh, h, r, num, title, id, t, tz, notes) {
   var desc = String(get('desc').getValue() || '');
   if (rqaParseTicket_(title)) {
     if (String(t.title || '').trim() !== title) { edit.title = title; item.changes.push('name'); }
-    if (edit.title || !rqaFcSameText_(rqaFcCleanDesc_(t.description), desc)) {
-      edit.description = rqaFcDescription_(title, desc);
-      if (!rqaFcSameText_(rqaFcCleanDesc_(t.description), desc)) item.changes.push('description');
+    // A description fills an empty task only: the task's own text (often the original request) is never replaced.
+    var fcDesc = rqaFcCleanDesc_(t.description);
+    if (desc.trim() && !fcDesc) { edit.description = rqaFcDescription_(title, desc); item.changes.push('description'); }
+    else {
+      if (desc.trim() && !rqaFcSameText_(fcDesc, desc)) notes.push('#' + num + ': the descriptions differ, so the task keeps its own');
+      // A renamed ticket: only the "Sheet ticket / Branch" lines at the end of the task's description follow it.
+      if (edit.title) edit.description = rqaFcRefooter_(t.description, title);
     }
   } else notes.push('#' + num + ': the ticket has no title, so the task name is left as it is');
   var dev = String(get('dev').getValue() || '');
@@ -1518,8 +1530,10 @@ function rqaFcPullItem_(sh, h, r, num, title, id, t, tz, notes, devBy, pulled) {
     if (p && p.num === num) add('name', function () { get('ticket').setValue(fcTitle); });
     else notes.push('#' + num + ': the task is named "' + fcTitle.slice(0, 60) + '", not "' + num + ' | ...", so the ticket name is left as it is');
   }
-  var fcDesc = rqaFcCleanDesc_(t.description);
-  if (fcDesc && !rqaFcSameText_(fcDesc, get('desc').getValue())) add('description', function () { get('desc').setValue(fcDesc); });
+  // A description fills an empty ticket only: the ticket's own text (often the dev's notes) is never replaced.
+  var fcDesc = rqaFcCleanDesc_(t.description), sheetDesc = String(get('desc').getValue() || '');
+  if (fcDesc && !sheetDesc.trim()) add('description', function () { get('desc').setValue(fcDesc); });
+  else if (fcDesc && !rqaFcSameText_(fcDesc, sheetDesc)) notes.push('#' + num + ': the descriptions differ, so the ticket keeps its own');
   var who = String(t.assigned_to_id || '0');
   if (who !== '0' && who !== '-1') {
     var dev = devBy[who];
