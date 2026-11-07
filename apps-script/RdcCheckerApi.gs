@@ -1064,14 +1064,14 @@ function rqaFc_(method, path, payload, whole) {
   var key = keys.props.getProperty('FREEDCAMP_API_KEY'), secret = keys.props.getProperty('FREEDCAMP_API_SECRET');
   var opts = { method: method, muteHttpExceptions: true };
   if (payload) { opts.contentType = 'application/json'; opts.payload = JSON.stringify(payload); }
-  // Freedcamp answers 429 (too many requests) when a whole sheet is read at once: wait and try again, up to ~1 min.
+  // Freedcamp answers 429 (too many requests) after many calls in a short time: wait and try again, up to ~15 s.
   for (var attempt = 0, res; ; attempt++) {
     var ts = String(Math.floor(Date.now() / 1000));
     var hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, key + ts, secret)
       .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
     var url = 'https://freedcamp.com/api/v1/' + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(key) + '&timestamp=' + ts + '&hash=' + hash;
     res = UrlFetchApp.fetch(url, opts);
-    if (res.getResponseCode() !== 429 || attempt >= 5) break;
+    if (res.getResponseCode() !== 429 || attempt >= 3) break;
     Utilities.sleep(Math.min(2000 * Math.pow(2, attempt), 20000));
   }
   var body = {};
@@ -1095,16 +1095,31 @@ function rqaFcProjectTasks_() {
   return map;
 }
 
-/** A reader of tasks by id that loads the whole project once, on first use, and reads any task missing from it alone. */
+/**
+ * A reader of tasks by id that loads the whole project once, on first use, and reads any task missing from it alone.
+ * When Freedcamp is refusing requests (429), it stops calling at all: reader.limited is set and every read throws,
+ * since more calls only keep the limit going.
+ */
 function rqaFcTaskReader_(notes) {
   var bulk = null;
-  return function (id) {
+  var read = function (id) {
+    if (read.limited) throw new Error(RQA_FC_LIMITED);
     if (bulk === null) {
-      try { bulk = rqaFcProjectTasks_(); } catch (err) { bulk = {}; if (notes) notes.push('Could not read the whole task list at once (' + err.message + '), so tasks were read one by one'); }
+      try { bulk = rqaFcProjectTasks_(); } catch (err) {
+        bulk = {};
+        if (/ 429/.test(err.message)) { read.limited = true; throw new Error(RQA_FC_LIMITED); }
+        if (notes) notes.push('Could not read the whole task list at once (' + err.message + '), so tasks were read one by one');
+      }
     }
-    return bulk[String(id)] || (rqaFc_('get', 'tasks/' + id).tasks || [])[0];
+    try { return bulk[String(id)] || (rqaFc_('get', 'tasks/' + id).tasks || [])[0]; } catch (err) {
+      if (/ 429/.test(err.message)) { read.limited = true; throw new Error(RQA_FC_LIMITED); }
+      throw err;
+    }
   };
+  read.limited = false;
+  return read;
 }
+var RQA_FC_LIMITED = 'Freedcamp is refusing requests right now (too many requests in a short time). Nothing more was read; try again in 15 to 30 minutes';
 
 /** Freedcamp's users as { id, first, last, full }. Cached 6 h. */
 function rqaFcUsers_() {
@@ -1311,6 +1326,7 @@ function rqaFcTwoWay_(all) {
   var completeOn = /^y/i.test(rqaSetting_('Freedcamp: complete task when ticket Passed/Closed'));
   var changed = false, read = rqaFcTaskReader_(null);
   links.forEach(function (row, i) {
+    if (read.limited) return; // Freedcamp is refusing requests: try again next run
     var id = rqaFcTaskId_(row[0] && row[0].getLinkUrl());
     if (!id || (!all && !rqaFcHandles_(keys, String(devCol[i][0] || '')))) return;
     var num = String(names[i][0]).split('|')[0].trim(), st = String(status[i][0] || '');
@@ -1332,7 +1348,7 @@ function rqaFcTwoWay_(all) {
         }
         pulled[id] = 1;
       } else if (pulled[id]) delete pulled[id];
-    } catch (err) { out.errors.push(num + ': ' + err.message); }
+    } catch (err) { out.errors.push(read.limited ? RQA_FC_LIMITED : num + ': ' + err.message); }
   });
   props.setProperty('FREEDCAMP_SYNCED', JSON.stringify(done));
   sp.setProperty('FREEDCAMP_PULLED', JSON.stringify(pulled));
@@ -1444,6 +1460,7 @@ function rqaFcSyncRun_(dir) {
 
   ss.toast('Reading ' + rows.length + ' ticket(s) and their Freedcamp tasks…', label, 120);
   var plan = rqaFcPlan_(dir, sh, h, rows, !all);
+  if (plan.limited) return ui.alert(label, RQA_FC_LIMITED + '.\n\nNothing was changed.', ui.ButtonSet.OK);
   var changes = plan.items.filter(function (it) { return it.changes.length; });
   var foot = (plan.notes.length ? '\n\nNotes:\n' + plan.notes.slice(0, 15).join('\n') + (plan.notes.length > 15 ? '\n… and ' + (plan.notes.length - 15) + ' more' : '') : '') +
     (plan.stopped ? '\n\nStopped early (time limit) after ticket ' + plan.stopped + ': select the rest and run it again.' : '');
@@ -1478,14 +1495,17 @@ function rqaFcPlan_(dir, sh, h, rows, explain) {
     if (!id) { if (explain) notes.push('#' + num + ': no Freedcamp task yet (tick its Freedcamp box)'); continue; }
     if (Date.now() - started > 4 * 60 * 1000) { stopped = items.length ? items[items.length - 1].num : num; break; }
     var t;
-    try { t = read(id); } catch (err) { notes.push('#' + num + ': could not read task ' + id + ' (' + err.message + ')'); continue; }
+    try { t = read(id); } catch (err) {
+      if (read.limited) { notes.push(RQA_FC_LIMITED + '.'); stopped = ''; items.length = 0; break; }
+      notes.push('#' + num + ': could not read task ' + id + ' (' + err.message + ')'); continue;
+    }
     if (!t) { notes.push('#' + num + ': task ' + id + ' was not found in Freedcamp'); continue; }
     var item = dir === 'push' ? rqaFcPushItem_(sh, h, r, num, title, id, t, tz, notes) : rqaFcPullItem_(sh, h, r, num, title, id, t, tz, notes, devBy, pulled);
     items.push(item);
   }
 
   return {
-    items: items, notes: notes, stopped: stopped,
+    items: items, notes: notes, stopped: stopped, limited: read.limited,
     apply: function () {
       var errors = [], changedSheet = false;
       items.forEach(function (it) {
