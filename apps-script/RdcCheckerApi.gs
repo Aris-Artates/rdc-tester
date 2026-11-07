@@ -4,7 +4,7 @@
  * Paste this whole file over Code.gs (Extensions > Apps Script), save, pick rqaSetupSheet and Run once.
  * See docs/SHEET-SETUP.md and docs/WORKFLOW.md in the rdc-tester repo.
  *
- * Tabs: Dashboard | Dev Tickets | Test Cases | QA Dashboard | Dev Dashboard | Check Log | Settings
+ * Tabs: Dashboard | Dev Tickets | Parent Tasks | Test Cases | QA Dashboard | Dev Dashboard | Check Log | Settings
  *
  * The flow it supports:
  *   Dev:  clear Dev Tickets!A2 -> new ticket (In Dev) -> type the title -> tick Freedcamp -> set Ready for QA.
@@ -29,11 +29,15 @@
  * parent, status) and "Freedcamp -> Sheet" (the same back). Every 15 minutes only statuses sync: Passed / Closed
  * tickets complete their task; a task completed in Freedcamp moves a No Progress or In Dev ticket to Ready for QA
  * and a Fixing or Reworked ticket to Ready for Re-test; other statuses stay as they are.
+ *
+ * Subtasks: the Parent Tasks tab lists the project's tasks that are not tickets (type a title there to create one).
+ * Parent Task on Dev Tickets is a dropdown of those and of every ticket with a task. "New Subtasks" (on both tabs):
+ * one line per subtask; each becomes a ticket under that parent and its Freedcamp subtask is created.
  */
 
 var RQA_DASH = 'Dashboard', RQA_TICKETS = 'Dev Tickets', RQA_CASES = 'Test Cases', RQA_QA = 'QA Dashboard',
-  RQA_DEV = 'Dev Dashboard', RQA_LOG = 'Check Log', RQA_SETTINGS = 'Settings';
-var RQA_ORDER = [RQA_DASH, RQA_TICKETS, RQA_CASES, RQA_QA, RQA_DEV, RQA_LOG, RQA_SETTINGS];
+  RQA_DEV = 'Dev Dashboard', RQA_LOG = 'Check Log', RQA_SETTINGS = 'Settings', RQA_PARENTS = 'Parent Tasks';
+var RQA_ORDER = [RQA_DASH, RQA_TICKETS, RQA_PARENTS, RQA_CASES, RQA_QA, RQA_DEV, RQA_LOG, RQA_SETTINGS];
 var RQA_NAVY = '#1f2a44', RQA_GOLD = '#8a6d1d', RQA_GREY = '#5f6b7a';
 var RQA_TZ = 'Asia/Manila';
 
@@ -45,9 +49,14 @@ var RQA_TK = {
   ticket: 'Ticket', time: 'Time', date: 'Date', dev: 'Dev', status: 'Status', desc: 'Description', fc: 'Freedcamp',
   branch: 'Branch', fix: 'Fix', fixOf: 'Fix Of', reworkedBy: 'Reworked By', fixes: 'Fix Tickets', type: 'Type', page: 'Page',
   cases: 'Test Cases', qa: 'QA Result', lastTested: 'Last Tested', readyAt: 'Ready At', notes: 'Notes', parent: 'Parent Task',
+  newSubs: 'New Subtasks',
 };
 var RQA_TK_ORDER = ['ticket', 'branch', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
-  'cases', 'qa', 'lastTested', 'readyAt', 'notes', 'parent'];
+  'cases', 'qa', 'lastTested', 'readyAt', 'notes', 'parent', 'newSubs'];
+
+// ---- Parent Tasks: header row 1. Pick list (hidden) feeds the Parent Task dropdown on Dev Tickets.
+var RQA_PT = { task: 'Task', title: 'Title', assignee: 'Assignee', status: 'Status', subs: 'Subtasks', newSubs: 'New Subtasks', dev: 'Dev', pick: 'Pick list' };
+var RQA_PT_ORDER = ['task', 'title', 'assignee', 'status', 'subs', 'newSubs', 'dev', 'pick'];
 var RQA_TK_AUTO = ['branch', 'fixes', 'type', 'page', 'cases', 'qa', 'lastTested', 'readyAt'];
 
 // ---- Test Cases: header row 1.
@@ -102,6 +111,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Sheet \u2192 Freedcamp (selected or all tickets)', 'rqaFcPushClick')
     .addItem('Freedcamp \u2192 Sheet (selected or all tickets)', 'rqaFcPullClick')
+    .addItem('Refresh Parent Tasks list', 'rqaRefreshParentTasks')
     .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
     .addItem('Disconnect Freedcamp', 'rqaDisconnectFreedcamp')
     .addItem('Create checker token…', 'rqaCreateToken')
@@ -135,6 +145,11 @@ function rqaTicketEdit_(e, sh) {
       title: rqaSetting_('Fix ticket type') + ': ' + (rqaPageOf_(parent.title) || parent.title) + ' - Fix for #' + parent.num });
     SpreadsheetApp.getActive().toast('Fix ticket #' + num + ' created at the bottom. Edit its title if needed.', 'Fix ticket', 6);
     return rqaRefresh();
+  }
+  if (h[RQA_TK.parent] != null && c === h[RQA_TK.parent] + 1) {
+    var pid = rqaFcTaskId_(e.range.getDisplayValue());
+    if (pid) e.range.setRichTextValue(rqaParentRich_(pid));
+    return;
   }
   if (c === h[RQA_TK.status] + 1) {
     if (e.value === RQA_S.ready) sh.getRange(r, h[RQA_TK.readyAt] + 1).setValue(new Date());
@@ -173,8 +188,8 @@ function rqaCaseEdit_(e, sh) {
 
 /** Adds the next ticket row. Returns its number. */
 function rqaNewTicket_(sh, opts) {
-  var lock = LockService.getDocumentLock();
-  lock.waitLock(10000);
+  var lock = opts && opts.noLock ? null : LockService.getDocumentLock();
+  if (lock) lock.waitLock(10000);
   try {
     var brain = rqaBrain_(sh), num = Number(brain.getValue());
     if (!num) return 0;
@@ -190,13 +205,13 @@ function rqaNewTicket_(sh, opts) {
     if (opts && opts.dev) set('dev', opts.dev);
     if (opts && opts.fixOf) set('fixOf', Number(opts.fixOf));
     if (opts && opts.parentUrl && h[RQA_TK.parent] != null) {
-      sh.getRange(row, h[RQA_TK.parent] + 1).setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + rqaFcTaskId_(opts.parentUrl)).setLinkUrl(opts.parentUrl).build());
+      sh.getRange(row, h[RQA_TK.parent] + 1).setRichTextValue(rqaParentRich_(rqaFcTaskId_(opts.parentUrl)));
     }
     brain.setValue(num + 1);
     sh.getRange(RQA_T.counter).setValue((num + 1) + ' | ');
     return num;
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 
@@ -392,7 +407,7 @@ function rqaSetupSheet() {
   rqaBuildQaDashboard_(ss, L);
   rqaBuildDevDashboard_(ss, L, st);
   RQA_ORDER.forEach(function (name, i) { ss.setActiveSheet(ss.getSheetByName(name)); ss.moveActiveSheet(i + 1); });
-  var tabColours = ['#1f2a44', '#2f6fec', '#1e8e3e', '#b7791f', '#c62828', '#5f6b7a', '#9aa3b2'];
+  var tabColours = ['#1f2a44', '#2f6fec', '#6b4fbb', '#1e8e3e', '#b7791f', '#c62828', '#5f6b7a', '#9aa3b2'];
   RQA_ORDER.forEach(function (n, i) { ss.getSheetByName(n).setTabColor(tabColours[i]); });
   var blank = ss.getSheetByName('Sheet1');
   if (blank && blank.getLastRow() === 0 && blank.getLastColumn() === 0) ss.deleteSheet(blank);
@@ -401,12 +416,14 @@ function rqaSetupSheet() {
   ss.toast('All tabs are ready.', 'RDC QA', 5);
 }
 
-/** Only the Dev Tickets tab: new columns (Parent Task), notes, widths and the Sync Freedcamp button. Dashboards untouched. */
+/** Only Dev Tickets and Parent Tasks: new columns, dropdowns, notes, widths and the buttons. Dashboards untouched. */
 function rqaRepairTickets() {
   var ss = SpreadsheetApp.getActive();
   rqaSetupTickets_(ss, ss.getSheetByName(RQA_SETTINGS));
   rqaRefresh();
-  ss.toast('Dev Tickets repaired.', 'RDC QA', 5);
+  var note = '';
+  if (rqaFcKeys_()) { try { rqaRefreshParents_(rqaFcProjectTasks_()); } catch (err) { note = ' Parent Tasks list not refreshed: ' + err.message; } }
+  ss.toast('Dev Tickets and Parent Tasks repaired.' + note, 'RDC QA', 8);
 }
 
 function rqaSetupSettings_(ss) {
@@ -468,13 +485,16 @@ function rqaSetupTickets_(ss, st) {
   RQA_TK_AUTO.forEach(function (k) { sh.getRange(RQA_T.head, h[RQA_TK[k]] + 1).setBackground(RQA_GREY); });
   sh.getRange(RQA_T.head, h[RQA_TK.reworkedBy] + 1).setNote('Ticket number that reworked this feature (with Status = Reworked).');
   sh.getRange(RQA_T.head, h[RQA_TK.fixOf] + 1).setNote('For a fix ticket: the failed ticket it fixes. Filled in by the Fix box.');
-  sh.getRange(RQA_T.head, h[RQA_TK.parent] + 1).setNote('Paste a Freedcamp task link (or its number) to make this ticket\'s task a subtask of it. ' +
-    'Fix tickets get their main ticket\'s task here automatically. Works before or after the task is sent.');
+  sh.getRange(RQA_T.head, h[RQA_TK.parent] + 1).setNote('Pick the parent (a Parent Tasks task or a ticket) to make this ticket\'s task its subtask; ' +
+    'a pasted Freedcamp link or task number works too. Fix tickets get their main ticket\'s task here automatically. Works before or after the task is sent.');
+  sh.getRange(RQA_T.head, h[RQA_TK.newSubs] + 1).setNote('Type subtasks of this ticket here, one per line (Alt+Enter between lines), then leave the cell. ' +
+    'Each line becomes a new ticket under this one (same type, page and Dev) and its Freedcamp subtask is created. Start a line with BUG: (or another type) to change its type.');
+  var ps = rqaSetupParents_(ss, st, sh, h), pick = rqaLetter_(ps.h[RQA_PT.pick] + 1);
   rqaAddSyncButton_(sh, h);
   sh.getRange(RQA_T.head, h[RQA_TK.status] + 1).setNote('Dev sets In Dev / Ready for QA. Failed, Fixing, Ready for Re-test and Passed follow the test cases. Reworked / Closed stay as set.');
   sh.setFrozenRows(RQA_T.head); sh.setFrozenColumns(1);
   var widths = { ticket: 380, time: 70, date: 75, dev: 85, status: 120, desc: 240, fc: 85, branch: 300, fix: 45, fixOf: 60, reworkedBy: 85, fixes: 85,
-    type: 70, page: 170, cases: 160, qa: 300, lastTested: 130, readyAt: 130, notes: 220, parent: 110 };
+    type: 70, page: 170, cases: 160, qa: 300, lastTested: 130, readyAt: 130, notes: 220, parent: 260, newSubs: 260 };
   Object.keys(widths).forEach(function (k) { sh.setColumnWidth(h[RQA_TK[k]] + 1, widths[k]); });
   var rows = Math.max(sh.getMaxRows() - RQA_T.first + 1, 1);
   var col = function (k) { return sh.getRange(RQA_T.first, h[RQA_TK[k]] + 1, rows, 1); };
@@ -483,10 +503,11 @@ function rqaSetupTickets_(ss, st) {
   // A Freedcamp cell turns into a link once sent, so its checkbox must accept that text.
   col('fc').setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(true).build());
   col('fix').insertCheckboxes();
+  col('parent').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInRange(ps.sh.getRange(pick + '2:' + pick), true).setAllowInvalid(true).build());
   col('fixOf').setNumberFormat('0'); col('reworkedBy').setNumberFormat('@');
   col('date').setNumberFormat('mm/dd/yy');
   col('lastTested').setNumberFormat('mmm d, h:mm am/pm'); col('readyAt').setNumberFormat('mmm d, h:mm am/pm');
-  ['ticket', 'desc', 'qa', 'cases', 'notes'].forEach(function (k) { col(k).setWrap(true); });
+  ['ticket', 'desc', 'qa', 'cases', 'notes', 'parent', 'newSubs'].forEach(function (k) { col(k).setWrap(true); });
   sh.getRange(RQA_T.first, 1, rows, sh.getLastColumn()).setVerticalAlignment('top');
   var status = col('status'), B = SpreadsheetApp.newConditionalFormatRule;
   sh.setConditionalFormatRules(Object.keys(RQA_STATUS_COLOURS).map(function (s) {
@@ -1117,6 +1138,11 @@ function rqaFcTaskReader_(notes) {
     }
   };
   read.limited = false;
+  read.all = function () {
+    if (read.limited) throw new Error(RQA_FC_LIMITED);
+    if (bulk === null || !Object.keys(bulk).length) bulk = rqaFcProjectTasks_();
+    return bulk;
+  };
   return read;
 }
 var RQA_FC_LIMITED = 'Freedcamp is refusing requests right now (too many requests in a short time). Nothing more was read; try again in 15 to 30 minutes';
@@ -1155,29 +1181,45 @@ function rqaFcUserId_(name) {
  * (the old shared key covers devs who have not connected), so a tick makes exactly one task.
  */
 function rqaOnEditFreedcamp(e) {
-  if (!e || !e.range || e.range.getSheet().getName() !== RQA_TICKETS || e.range.getRow() < RQA_T.first || e.range.getNumRows() > 1) return;
-  var sh = e.range.getSheet(), h = rqaHeaders_(sh, RQA_T.head), r = e.range.getRow();
-  if (h[RQA_TK.parent] != null && e.range.getColumn() === h[RQA_TK.parent] + 1) return rqaParentEdited_(sh, h, r);
-  if (e.value !== 'TRUE' || e.range.getColumn() !== h[RQA_TK.fc] + 1) return;
-  if (!rqaFcHandles_(rqaFcKeys_(), String(sh.getRange(r, h[RQA_TK.dev] + 1).getValue() || ''))) return;
+  if (!e || !e.range || e.range.getNumRows() > 1) return;
+  var sh = e.range.getSheet(), name = sh.getName(), r = e.range.getRow(), c = e.range.getColumn();
+  if (name === RQA_PARENTS) return rqaParentsEdit_(sh, r, c);
+  if (name !== RQA_TICKETS || r < RQA_T.first) return;
+  var h = rqaHeaders_(sh, RQA_T.head);
+  if (h[RQA_TK.parent] != null && c === h[RQA_TK.parent] + 1) return rqaParentEdited_(sh, h, r);
+  if (h[RQA_TK.newSubs] != null && c === h[RQA_TK.newSubs] + 1) return rqaSubtasksEdit_(sh, r, c, false);
+  if (e.value !== 'TRUE' || c !== h[RQA_TK.fc] + 1) return;
+  var keys = rqaFcKeys_();
+  if (!rqaFcHandles_(keys, String(sh.getRange(r, h[RQA_TK.dev] + 1).getValue() || ''))) return;
   var lock = LockService.getDocumentLock();
   lock.waitLock(20000);
   try {
-    var cell = sh.getRange(r, h[RQA_TK.fc] + 1);
-    var g = function (k) { return sh.getRange(r, h[RQA_TK[k]] + 1); };
-    var title = g('ticket').getDisplayValue().trim();
-    if (!rqaParseTicket_(title)) { cell.setValue(false); return SpreadsheetApp.getActive().toast('Type the ticket title first.', 'Freedcamp', 5); }
-    var task = rqaCreateFreedcampTask_(title, String(g('desc').getValue() || ''), String(g('dev').getValue() || ''), rqaParentId_(sh, h, r));
-    cell.clearDataValidations();
-    cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
+    var title = sh.getRange(r, h[RQA_TK.ticket] + 1).getDisplayValue().trim();
+    var task = rqaFcSendRow_(sh, h, r);
+    if (!task) return;
     SpreadsheetApp.getActive().toast('Freedcamp task created for ticket ' + title.split('|')[0].trim() + '.' +
       (task.warnings.length ? ' Check: ' + task.warnings.join('; ') + '.' : ''), 'Freedcamp', task.warnings.length ? 12 : 5);
+    // Subtasks typed before the ticket had a task.
+    var subs = h[RQA_TK.newSubs] != null ? sh.getRange(r, h[RQA_TK.newSubs] + 1) : null;
+    if (subs && String(subs.getValue() || '').trim()) { rqaMakeSubtasks_(sh, r, subs, String(subs.getValue()).trim(), false); rqaFcDrainQueue_(keys); }
   } catch (err) {
     sh.getRange(r, h[RQA_TK.fc] + 1).setValue(false);
     SpreadsheetApp.getActive().toast(String(err.message || err), 'Freedcamp failed', 10);
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Creates the Freedcamp task of ticket row r and links its Freedcamp cell. Null when it already has one. The caller holds the lock. */
+function rqaFcSendRow_(sh, h, r) {
+  var g = function (k) { return sh.getRange(r, h[RQA_TK[k]] + 1); }, cell = g('fc'), link = cell.getRichTextValue();
+  if (rqaFcTaskId_(link && link.getLinkUrl())) return null;
+  var title = g('ticket').getDisplayValue().trim();
+  if (!rqaParseTicket_(title)) throw new Error('Type the ticket title first.');
+  var task = rqaCreateFreedcampTask_(title, String(g('desc').getValue() || ''), String(g('dev').getValue() || ''), rqaParentId_(sh, h, r));
+  cell.clearDataValidations();
+  cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
+  return task;
 }
 
 /**
@@ -1197,7 +1239,7 @@ function rqaCreateFreedcampTask_(title, description, dev, parentId, opts) {
   var today = Utilities.formatDate(new Date(), RQA_TZ, 'yyyy-MM-dd');
   var people = open ? rqaFcPeople_('') : rqaFcPeople_(dev);
   if (open) people.warnings = people.warnings.filter(function (w) { return w.indexOf('assigned to you') < 0; });
-  var fields = { title: title, description: rqaFcDescription_(title, description), project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3 };
+  var fields = { title: title, description: opts && opts.plain ? String(description || '') : rqaFcDescription_(title, description), project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3 };
   if (open) fields.assigned_to_id = '0';
   else { fields.assigned_to_id = people.assignee; fields.start_date = today; fields.due_date = today; }
   if (parentId) fields.h_parent_id = parentId;
@@ -1248,9 +1290,9 @@ function rqaFcMe_() {
   return me;
 }
 
-/** The Freedcamp task number in a link ("…/tasks/73924306", "…/panel/task/73924306") or a bare number; '' if none. */
+/** The Freedcamp task number in a link ("…/tasks/73924306", "…/panel/task/73924306"), a label ending "Task 73924306" or a bare number; '' if none. */
 function rqaFcTaskId_(v) {
-  var m = String(v || '').match(/tasks?\/(\d+)/) || String(v || '').match(/^\s*(?:Task\s*)?(\d{5,})\s*$/i);
+  var m = String(v || '').match(/\bTask\s+(\d{5,})\s*$/) || String(v || '').match(/tasks?\/(\d+)/) || String(v || '').match(/^\s*(?:Task\s*)?(\d{5,})\s*$/i);
   return m ? m[1] : '';
 }
 
@@ -1353,11 +1395,22 @@ function rqaFcTwoWay_(all) {
   props.setProperty('FREEDCAMP_SYNCED', JSON.stringify(done));
   sp.setProperty('FREEDCAMP_PULLED', JSON.stringify(pulled));
   if (changed) rqaRefresh();
+  if (!all && !read.limited) {
+    var cache = CacheService.getScriptCache();
+    if (!cache.get('fcParentsAt')) {
+      cache.put('fcParentsAt', '1', 840);
+      try { rqaRefreshParents_(read.all()); } catch (err) { out.errors.push('Parent Tasks: ' + err.message); }
+    }
+  }
   return out;
 }
 
 /** Every 15 min, per connected dev: the status rules above, for their own tickets. */
-function rqaSyncFreedcamp() { rqaFcTwoWay_(false); }
+function rqaSyncFreedcamp() {
+  var lock = LockService.getDocumentLock();
+  if (lock.tryLock(30000)) { try { rqaFcDrainQueue_(rqaFcKeys_()); } catch (_) {} finally { lock.releaseLock(); } }
+  rqaFcTwoWay_(false);
+}
 
 // ================================================================ Sheet -> Freedcamp and Freedcamp -> Sheet
 
@@ -1595,8 +1648,7 @@ function rqaFcPullItem_(sh, h, r, num, title, id, t, tz, notes, devBy, pulled) {
     var cell = get('parent'), rt = cell.getRichTextValue();
     var had = rqaFcTaskId_(rt && rt.getLinkUrl()) || rqaFcTaskId_(cell.getDisplayValue()), now = String(t.h_parent_id || '').replace(/^0$/, '');
     if (now && now !== had) {
-      var url = 'https://freedcamp.com/view/' + rqaSetting_('Freedcamp project ID') + '/tasks/' + now;
-      add('Parent Task → task ' + now, function () { cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + now).setLinkUrl(url).build()); });
+      add('Parent Task → task ' + now, function () { cell.setRichTextValue(rqaParentRich_(now)); });
     } else if (!now && had) add('Parent Task cleared (no longer a subtask)', function () { cell.clearContent(); });
   }
   var st = String(get('status').getValue() || ''), next = '';
@@ -1622,6 +1674,288 @@ function rqaAddSyncButton_(sh, h) {
 
 /** Menu: just (re)place the buttons. */
 function rqaPlaceSyncButton() { var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS); rqaAddSyncButton_(sh, rqaHeaders_(sh, RQA_T.head)); }
+
+// ================================================================ subtasks and the Parent Tasks tab
+
+/*
+ * Parent Tasks lists every open Freedcamp task of the project that is not a ticket (its title does not start with
+ * "12 | "), e.g. a day's "11-07 Daily tasks". It refreshes itself from the 15-minute sync (one project read per
+ * 15 minutes for everyone), and from RDC QA > Refresh Parent Tasks list.
+ *   - Typing a Title on an empty row creates that task in Freedcamp (assigned to the row's Dev, else to you).
+ *   - Its hidden "Pick list" column feeds the Parent Task dropdown on Dev Tickets: these tasks and every ticket
+ *     with a task, as "<title> — Task <id>".
+ *   - New Subtasks (here and on Dev Tickets): one subtask per line. Each line becomes a new ticket under that
+ *     parent (Parent Task set, Dev copied, In Dev) and its Freedcamp subtask is created.
+ * The New Subtasks edit runs in every connected dev's trigger. Under the document lock, the first one makes the
+ * ticket rows and queues their tasks (Script Property FREEDCAMP_QUEUE); each one then creates the queued tasks of
+ * its own dev, so "Created by" is that dev. A dev who has not connected is handled by whichever trigger runs.
+ */
+
+/** Whether this trigger creates the Freedcamp task of a row owned by `dev`: its own dev's, else anyone's. */
+function rqaFcMine_(keys, dev) {
+  if (!keys) return false;
+  return rqaFreedcampReady_(dev) ? !!rqaFcHandles_(keys, dev) : true;
+}
+
+/**
+ * A subtask line under a parent of `type` and `page`, as a ticket title without its number:
+ *   ('FEAT', 'Settings - Fund Sources', 'Add date filter')        -> 'FEAT: Settings - Fund Sources - Add date filter'
+ *   ('FEAT', 'Settings - Fund Sources', 'BUG: Export ignores it') -> 'BUG: Settings - Fund Sources - Export ignores it'
+ *   ('', '', 'Check the maps page')                               -> 'TASK: Check the maps page'
+ * A line that already names its page ("Main - Sub - Task") keeps it; bullets and "1." are dropped.
+ */
+function rqaSubtaskTitle_(type, page, line) {
+  var s = String(line || '').replace(/^\s*(?:[-*•]+|\d+[.)])\s+/, '').replace(/^\s*\d+\s*\|\s*/, '').trim();
+  var m = s.match(/^([A-Z]+(?:\s*\/\s*[A-Z]+)?)\s*:\s*(.+)$/), t = type || 'TASK';
+  if (m && m[1].length <= 12) { t = m[1].replace(/\s+/g, ''); s = m[2].trim(); }
+  if (page && !/\s-\s/.test(s)) s = page + ' - ' + s;
+  return t + ': ' + s;
+}
+
+/** The lines of a New Subtasks cell. */
+function rqaSubtaskLines_(text) {
+  return String(text || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(function (l) { return l && !/^[-*•]+$/.test(l); });
+}
+
+/** Freedcamp task id -> its Pick list label ("<title> — Task <id>"), read once per run. */
+var RQA_PICK_CACHE = null;
+function rqaParentChoices_() {
+  if (RQA_PICK_CACHE) return RQA_PICK_CACHE;
+  var map = {}, ss = SpreadsheetApp.getActive(), sh = ss && ss.getSheetByName(RQA_PARENTS);
+  if (sh) {
+    var ph = rqaHeaders_(sh, 1);
+    if (ph[RQA_PT.pick] != null && sh.getLastRow() > 1) {
+      sh.getRange(2, ph[RQA_PT.pick] + 1, sh.getLastRow() - 1, 1).getDisplayValues().forEach(function (r) {
+        var m = String(r[0]).match(/\bTask\s+(\d{5,})\s*$/);
+        if (m && !map[m[1]]) map[m[1]] = String(r[0]);
+      });
+    }
+  }
+  return (RQA_PICK_CACHE = map);
+}
+/** The text a Parent Task cell shows for a task: its Pick list label, else "Task <id>". */
+function rqaParentLabel_(id) { return rqaParentChoices_()[String(id)] || 'Task ' + id; }
+function rqaParentRich_(id) {
+  return SpreadsheetApp.newRichTextValue().setText(rqaParentLabel_(id))
+    .setLinkUrl('https://freedcamp.com/view/' + rqaSetting_('Freedcamp project ID') + '/tasks/' + id).build();
+}
+
+/** The Parent Tasks tab: headers, Dev dropdown, the hidden Pick list (formula) and notes. Never deletes rows. */
+function rqaSetupParents_(ss, st, tk, th) {
+  var sh = rqaTab_(ss, RQA_PARENTS), headers = RQA_PT_ORDER.map(function (k) { return RQA_PT[k]; });
+  rqaEnsureHeaders_(sh, headers, 1);
+  var ph = rqaHeaders_(sh, 1);
+  rqaHeaderStyle_(sh.getRange(1, 1, 1, headers.length));
+  ['task', 'assignee', 'status', 'subs'].forEach(function (k) { sh.getRange(1, ph[RQA_PT[k]] + 1).setBackground(RQA_GREY); });
+  sh.getRange(1, ph[RQA_PT.title] + 1).setNote('Freedcamp tasks that are not tickets (filled in automatically). Type a title on an empty row to create a new one in Freedcamp, assigned to the Dev on that row (or to you). Rename existing ones in Freedcamp.');
+  sh.getRange(1, ph[RQA_PT.newSubs] + 1).setNote('Type subtasks here, one per line (Alt+Enter between lines), then leave the cell. Each line becomes a ticket on Dev Tickets under this task, for the Dev on this row, and its Freedcamp subtask is created. Start a line with BUG: (or another type) to change its type; it is TASK otherwise.');
+  sh.getRange(1, ph[RQA_PT.dev] + 1).setNote('Who the new subtasks go to. Filled from the Freedcamp assignee; change it if needed.');
+  var widths = { task: 95, title: 320, assignee: 110, status: 95, subs: 95, newSubs: 300, dev: 90 };
+  Object.keys(widths).forEach(function (k) { sh.setColumnWidth(ph[RQA_PT[k]] + 1, widths[k]); });
+  sh.setFrozenRows(1);
+  var rows = Math.max(sh.getMaxRows() - 1, 1);
+  sh.getRange(2, ph[RQA_PT.dev] + 1, rows, 1).setDataValidation(rqaListRule_(st, 'Dev'));
+  sh.getRange(2, ph[RQA_PT.newSubs] + 1, rows, 1).setWrap(true);
+  sh.getRange(2, 1, rows, headers.length).setVerticalAlignment('top');
+  // Pick list: this tab's tasks, then every ticket that has a task.
+  var L = function (k) { return rqaLetter_(ph[RQA_PT[k]] + 1); };
+  var T = "'" + RQA_TICKETS + "'!", tl = rqaLetter_(th[RQA_TK.ticket] + 1), fl = rqaLetter_(th[RQA_TK.fc] + 1), f = RQA_T.first;
+  var own = L('title') + '2:' + L('title') + '&" — "&' + L('task') + '2:' + L('task');
+  var tix = T + tl + f + ':' + tl + '&" — "&' + T + fl + f + ':' + fl;
+  sh.getRange(2, ph[RQA_PT.pick] + 1, rows, 1).clearContent();
+  sh.getRange(2, ph[RQA_PT.pick] + 1).setFormula('={IFERROR(FILTER(' + own + ',REGEXMATCH(' + L('task') + '2:' + L('task') + '&"","^Task \\d+$")),"");' +
+    'IFERROR(FILTER(' + tix + ',REGEXMATCH(' + T + fl + f + ':' + fl + '&"","^Task \\d+$")),"")}');
+  sh.hideColumns(ph[RQA_PT.pick] + 1);
+  return { sh: sh, h: ph };
+}
+
+/** Rewrites the Parent Tasks list from the project's tasks (id -> task). Keeps typed Dev and New Subtasks, and rows still being created. */
+function rqaRefreshParents_(tasks) {
+  var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(RQA_PARENTS);
+  if (!sh || !tasks) return 0;
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) return 0;
+  try {
+    var ph = rqaHeaders_(sh, 1), P = {};
+    Object.keys(RQA_PT).forEach(function (k) { P[k] = ph[RQA_PT[k]]; });
+    var W = Math.max.apply(null, RQA_PT_ORDER.filter(function (k) { return k !== 'pick'; }).map(function (k) { return P[k]; })) + 1;
+    var n = Math.max(sh.getLastRow() - 1, 0);
+    var old = n ? sh.getRange(2, 1, n, W).getValues() : [], links = n ? sh.getRange(2, P.task + 1, n, 1).getRichTextValues() : [];
+    var keep = {}, pending = [];
+    old.forEach(function (row, i) {
+      var id = rqaFcTaskId_(links[i][0] && links[i][0].getLinkUrl()) || rqaFcTaskId_(row[P.task]);
+      if (id) keep[id] = row; else if (String(row[P.title]).trim()) pending.push(row);
+    });
+    var users = {}, devBy = {};
+    try { rqaFcUsers_().forEach(function (u) { users[String(u.id)] = u.full || (u.first + ' ' + u.last).trim(); }); devBy = rqaFcDevByUser_(); } catch (_) {}
+    var total = {}, open = {};
+    Object.keys(tasks).forEach(function (id) {
+      var t = tasks[id], p = String(t.h_parent_id || '').replace(/^0$/, '');
+      if (p) { total[p] = (total[p] || 0) + 1; if (String(t.status) !== '1') open[p] = (open[p] || 0) + 1; }
+    });
+    var list = Object.keys(tasks).map(function (id) { return tasks[id]; }).filter(function (t) {
+      return !/^\s*\d+\s*\|/.test(String(t.title || '')) && (String(t.status) !== '1' || open[String(t.id)]);
+    }).sort(function (a, b) { return Number(b.id) - Number(a.id); });
+    var rows = list.map(function (t) {
+      var id = String(t.id), was = keep[id], a = String(t.assigned_to_id || ''), row = [];
+      for (var i = 0; i < W; i++) row.push('');
+      row[P.task] = 'Task ' + id; row[P.title] = String(t.title || ''); row[P.assignee] = devBy[a] || users[a] || '';
+      row[P.status] = RQA_FC_STATUS_NAMES[String(t.status)] || ''; row[P.subs] = total[id] ? (open[id] || 0) + ' open of ' + total[id] : '';
+      row[P.newSubs] = was ? was[P.newSubs] : ''; row[P.dev] = (was && was[P.dev]) || devBy[a] || '';
+      return row;
+    }).concat(pending);
+    if (n) sh.getRange(2, 1, n, W).clearContent();
+    if (rows.length) {
+      sh.getRange(2, 1, rows.length, W).setValues(rows);
+      var project = rqaSetting_('Freedcamp project ID');
+      sh.getRange(2, P.task + 1, rows.length, 1).setRichTextValues(rows.map(function (r) {
+        var id = rqaFcTaskId_(r[P.task]), b = SpreadsheetApp.newRichTextValue().setText(String(r[P.task]));
+        return [(id ? b.setLinkUrl('https://freedcamp.com/view/' + project + '/tasks/' + id) : b).build()];
+      }));
+    }
+    sh.getRange(1, P.task + 1).setNote('Refreshed ' + Utilities.formatDate(new Date(), RQA_TZ, 'MMM d, h:mm a'));
+    SpreadsheetApp.flush();
+    RQA_PICK_CACHE = null;
+    rqaNormalizeParentCells_();
+    return list.length;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Every Parent Task cell on Dev Tickets shows its Pick list label and links to its task. */
+function rqaNormalizeParentCells_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS), h = rqaHeaders_(sh, RQA_T.head);
+  if (h[RQA_TK.parent] == null) return;
+  var n = rqaLastTicketRow_(sh, h) - RQA_T.first + 1;
+  if (n < 1) return;
+  var rg = sh.getRange(RQA_T.first, h[RQA_TK.parent] + 1, n, 1), rts = rg.getRichTextValues(), shown = rg.getDisplayValues();
+  rts.forEach(function (r, i) {
+    var id = rqaFcTaskId_(r[0] && r[0].getLinkUrl()) || rqaFcTaskId_(shown[i][0]);
+    if (id && (shown[i][0] !== rqaParentLabel_(id) || !(r[0] && r[0].getLinkUrl()))) sh.getRange(RQA_T.first + i, h[RQA_TK.parent] + 1).setRichTextValue(rqaParentRich_(id));
+  });
+}
+
+/** Menu: re-read the project and rewrite the Parent Tasks list. */
+function rqaRefreshParentTasks() {
+  var ui = SpreadsheetApp.getUi();
+  if (!rqaFcKeys_()) return ui.alert('Parent Tasks', 'Connect Freedcamp first: RDC QA > Connect Freedcamp.', ui.ButtonSet.OK);
+  try {
+    var n = rqaRefreshParents_(rqaFcProjectTasks_());
+    SpreadsheetApp.getActive().toast(n + ' parent task(s) listed.', 'Parent Tasks', 5);
+  } catch (err) {
+    ui.alert('Parent Tasks', / 429/.test(err.message) ? RQA_FC_LIMITED + '.' : err.message, ui.ButtonSet.OK);
+  }
+}
+
+/** Installable onEdit on Parent Tasks: a new Title creates its Freedcamp task; New Subtasks makes subtask tickets. */
+function rqaParentsEdit_(sh, r, c) {
+  if (r < 2) return;
+  var ph = rqaHeaders_(sh, 1);
+  if (c === ph[RQA_PT.newSubs] + 1) return rqaSubtasksEdit_(sh, r, c, true);
+  if (c !== ph[RQA_PT.title] + 1) return;
+  var keys = rqaFcKeys_(), get = function (k) { return sh.getRange(r, ph[RQA_PT[k]] + 1); };
+  var dev = String(get('dev').getValue() || '');
+  if (!rqaFcMine_(keys, dev)) return;
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(60000)) return;
+  var cell = get('task');
+  try {
+    var title = String(get('title').getValue() || '').trim();
+    if (!title || String(cell.getDisplayValue()).trim()) return; // has (or is getting) a task: renames are done in Freedcamp
+    if (/^\s*\d+\s*\|/.test(title)) return SpreadsheetApp.getActive().toast('Tickets go on Dev Tickets; this tab is for tasks that are not tickets.', 'Parent Tasks', 8);
+    cell.setValue('Creating…');
+    if (!dev && keys.dev) { dev = keys.dev; get('dev').setValue(dev); }
+    var task = rqaCreateFreedcampTask_(title, '', dev, null, { plain: true });
+    cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText('Task ' + task.id).setLinkUrl(task.url).build());
+    get('status').setValue(RQA_FC_STATUS_NAMES['2']); get('assignee').setValue(dev);
+    SpreadsheetApp.getActive().toast('Freedcamp task created: ' + title + '. Type its subtasks in New Subtasks.' +
+      (task.warnings.length ? ' Check: ' + task.warnings.join('; ') + '.' : ''), 'Parent Tasks', task.warnings.length ? 12 : 6);
+  } catch (err) {
+    cell.clearContent();
+    SpreadsheetApp.getActive().toast(String(err.message || err), 'Freedcamp failed', 10);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** New Subtasks typed on a Dev Tickets row (onParents false) or a Parent Tasks row. Runs in every connected dev's trigger. */
+function rqaSubtasksEdit_(sh, r, c, onParents) {
+  var keys = rqaFcKeys_();
+  if (!keys) return;
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(120000)) return; // the 15-minute sync sends anything left in the queue
+  try {
+    var cell = sh.getRange(r, c), text = String(cell.getValue() || '').trim();
+    if (text) rqaMakeSubtasks_(sh, r, cell, text, onParents);
+    rqaFcDrainQueue_(keys);
+  } catch (err) {
+    SpreadsheetApp.getActive().toast(String(err.message || err), 'Subtasks failed', 10);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Makes one ticket per line under the row's task and queues their Freedcamp tasks. The caller holds the lock. */
+function rqaMakeSubtasks_(sh, r, cell, text, onParents) {
+  var ss = SpreadsheetApp.getActive(), tk = ss.getSheetByName(RQA_TICKETS), th = rqaHeaders_(tk, RQA_T.head);
+  var type = '', page = '', dev, link, label;
+  if (onParents) {
+    var ph = rqaHeaders_(sh, 1);
+    link = sh.getRange(r, ph[RQA_PT.task] + 1).getRichTextValue();
+    dev = String(sh.getRange(r, ph[RQA_PT.dev] + 1).getValue() || '');
+    label = '"' + String(sh.getRange(r, ph[RQA_PT.title] + 1).getValue()) + '"';
+  } else {
+    var p = rqaParseTicket_(tk.getRange(r, th[RQA_TK.ticket] + 1).getDisplayValue());
+    if (!p) return ss.toast('Type the ticket title first, then the subtasks.', 'Subtasks', 6);
+    type = p.type; page = rqaPageOf_(p.title) || p.title; label = '#' + p.num;
+    link = tk.getRange(r, th[RQA_TK.fc] + 1).getRichTextValue();
+    dev = String(tk.getRange(r, th[RQA_TK.dev] + 1).getValue() || '');
+  }
+  var url = link && link.getLinkUrl();
+  if (!rqaFcTaskId_(url)) {
+    return ss.toast(onParents ? 'This row has no Freedcamp task yet. Wait until its Task cell shows a link, then type the subtasks again.'
+      : 'Ticket ' + label + ' has no Freedcamp task yet: tick its Freedcamp box and these subtasks are made right after.', 'Subtasks', 10);
+  }
+  var sp = PropertiesService.getScriptProperties(), q = JSON.parse(sp.getProperty('FREEDCAMP_QUEUE') || '[]'), nums = [];
+  rqaSubtaskLines_(text).forEach(function (line) {
+    var num = rqaNewTicket_(tk, { title: rqaSubtaskTitle_(type, page, line), dev: dev, parentUrl: url, noLock: true });
+    if (!num) return;
+    nums.push(num);
+    if (dev) q.push({ num: String(num), dev: dev });
+  });
+  sp.setProperty('FREEDCAMP_QUEUE', JSON.stringify(q));
+  cell.clearContent();
+  rqaRefresh();
+  ss.toast(nums.length + ' subtask ticket(s) made under ' + label + ': #' + nums.join(', #') + '.' +
+    (dev ? ' Their Freedcamp subtasks are being created.' : ' Pick their Dev and tick Freedcamp to send them.'), 'Subtasks', 8);
+}
+
+/** Creates the queued subtask tasks this trigger owns. The caller holds the lock. */
+function rqaFcDrainQueue_(keys) {
+  var sp = PropertiesService.getScriptProperties(), q = JSON.parse(sp.getProperty('FREEDCAMP_QUEUE') || '[]');
+  if (!q.length || !keys) return;
+  var sh = SpreadsheetApp.getActive().getSheetByName(RQA_TICKETS), h = rqaHeaders_(sh, RQA_T.head);
+  var n = rqaLastTicketRow_(sh, h) - RQA_T.first + 1;
+  var nums = n > 0 ? sh.getRange(RQA_T.first, h[RQA_TK.ticket] + 1, n, 1).getDisplayValues().map(function (v) { return String(v[0]).split('|')[0].trim(); }) : [];
+  var left = [], made = [], errors = [], limited = false;
+  q.forEach(function (it) {
+    if (limited || !rqaFcMine_(keys, it.dev)) return left.push(it);
+    var i = nums.indexOf(String(it.num));
+    if (i < 0) return;
+    try {
+      var task = rqaFcSendRow_(sh, h, RQA_T.first + i);
+      if (task) made.push('#' + it.num + (task.warnings.length ? ' (' + task.warnings.join('; ') + ')' : ''));
+    } catch (err) {
+      if (/ 429/.test(err.message)) { limited = true; left.push(it); } else errors.push('#' + it.num + ': ' + err.message);
+    }
+  });
+  sp.setProperty('FREEDCAMP_QUEUE', JSON.stringify(left));
+  if (made.length || errors.length) {
+    SpreadsheetApp.getActive().toast((made.length ? 'Freedcamp subtasks created: ' + made.join(', ') + '.' : '') +
+      (errors.length ? ' Not sent (tick Freedcamp to retry): ' + errors.join('; ') : ''), 'Subtasks', errors.length ? 12 : 6);
+  }
+}
 
 // The two button images (PNG, 3x), placed by rqaAddSyncButton_.
 var RQA_PUSH_BUTTON_PNG = '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';

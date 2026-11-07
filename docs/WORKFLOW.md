@@ -5,7 +5,8 @@ Everything lives in the **RDC8 IMS - QA & Dev Tickets** spreadsheet. Its tabs, i
 | Tab | For | What you do there |
 |---|---|---|
 | **Dashboard** | everyone | Read only: tickets by status, test results, tickets by dev, results by module |
-| **Dev Tickets** | devs | Log tickets, set *Ready for QA*, tick *Fix* / *Freedcamp* |
+| **Dev Tickets** | devs | Log tickets, set *Ready for QA*, tick *Fix* / *Freedcamp*, type *New Subtasks* |
+| **Parent Tasks** | devs | Freedcamp tasks that are not tickets (e.g. a day's task list): add one, type its *New Subtasks* |
 | **Test Cases** | QA | Write cases, pick a *Result* per case |
 | **QA Dashboard** | QA | Read only: what to test or re-test next |
 | **Dev Dashboard** | devs | Pick yourself in B4: your failed tickets, work in progress, and the feature trail of any page |
@@ -133,6 +134,33 @@ Rules that keep it safe:
 Every 15 minutes, only **statuses** sync on their own, for each connected dev's tickets: tasks of tickets that
 became **Passed** or **Closed** are marked **complete** (and reopened if the ticket goes back to failing; turn this
 off in Settings), and completed tasks move tickets as in the last rule above.
+
+### Subtasks
+
+A subtask is a normal ticket (number, branch, QA, dashboards) whose Freedcamp task sits under a parent task.
+The parent can be a ticket, or a Freedcamp task that is not a ticket.
+
+| To | Do |
+|---|---|
+| Make subtasks of a **ticket** | On Dev Tickets, in that ticket's **New Subtasks** cell, type one subtask per line (Alt+Enter between lines), then leave the cell |
+| Make subtasks of a **non-ticket task** | On **Parent Tasks**, type them in that task's **New Subtasks** cell the same way |
+| Make a new **non-ticket task** | On **Parent Tasks**, type its title on an empty row: it is created in Freedcamp (assigned to the row's Dev, else to you) |
+| Move one ticket under a parent | Pick the parent in its **Parent Task** dropdown (non-ticket tasks and every ticket with a task) |
+
+Each line becomes a new ticket at the bottom of Dev Tickets and the cell clears itself:
+
+- Title: the parent ticket's type and page plus the line. Under `12 | FEAT: Settings - Fund Sources - Create Page`,
+  `Add date filter` becomes `45 | FEAT: Settings - Fund Sources - Add date filter`. Start a line with a type in capitals
+  (`BUG: Export ignores filter`) to change the type; a line that already has a page (`Maps - Layers - Toggle`) keeps it.
+  Under a non-ticket task the type is `TASK` unless the line names one.
+- Parent Task is set, **Dev** is the parent ticket's Dev (on Parent Tasks: the row's **Dev**), status **In Dev**.
+- Its Freedcamp subtask is created right away, by that Dev's own key when they have connected (so *Created by* is them).
+  With no Dev, the tickets are made but not sent: pick a Dev and tick Freedcamp.
+- A ticket that has no Freedcamp task yet keeps the lines; tick its **Freedcamp** box and the subtasks are made right after.
+
+**Parent Tasks** lists the project's open tasks whose title is not a ticket (`12 | ...`), newest first, with their
+assignee, status and how many subtasks are open. It refreshes itself every 15 minutes (and with *RDC QA > Refresh
+Parent Tasks list*). Rename or complete those tasks in Freedcamp.
 
 ### Connecting: once per dev
 
