@@ -1679,7 +1679,7 @@ function rqaPlaceSyncButton() { var sh = SpreadsheetApp.getActive().getSheetByNa
 
 /*
  * Parent Tasks lists every open Freedcamp task of the project that is not a ticket (its title does not start with
- * "12 | "), e.g. a day's "11-07 Daily tasks". It refreshes itself from the 15-minute sync (one project read per
+ * "12 | "), e.g. a day's "11-07 Daily tasks", plus completed ones a ticket still has as its Parent Task. It refreshes itself from the 15-minute sync (one project read per
  * 15 minutes for everyone), and from RDC QA > Refresh Parent Tasks list.
  *   - Typing a Title on an empty row creates that task in Freedcamp (assigned to the row's Dev, else to you).
  *   - Its hidden "Pick list" column feeds the Parent Task dropdown on Dev Tickets: these tasks and every ticket
@@ -1793,8 +1793,15 @@ function rqaRefreshParents_(tasks) {
       var t = tasks[id], p = String(t.h_parent_id || '').replace(/^0$/, '');
       if (p) { total[p] = (total[p] || 0) + 1; if (String(t.status) !== '1') open[p] = (open[p] || 0) + 1; }
     });
+    // Tasks that tickets point to stay listed when completed, so their Parent Task cells still match the dropdown.
+    var used = {}, tk = ss.getSheetByName(RQA_TICKETS), th = tk ? rqaHeaders_(tk, RQA_T.head) : {};
+    var tn = tk ? rqaLastTicketRow_(tk, th) - RQA_T.first + 1 : 0;
+    if (tn > 0 && th[RQA_TK.parent] != null) {
+      var pr = tk.getRange(RQA_T.first, th[RQA_TK.parent] + 1, tn, 1), prt = pr.getRichTextValues(), prd = pr.getDisplayValues();
+      prt.forEach(function (x, i) { var id = rqaFcTaskId_(x[0] && x[0].getLinkUrl()) || rqaFcTaskId_(prd[i][0]); if (id) used[id] = 1; });
+    }
     var list = Object.keys(tasks).map(function (id) { return tasks[id]; }).filter(function (t) {
-      return !/^\s*\d+\s*\|/.test(String(t.title || '')) && (String(t.status) !== '1' || open[String(t.id)]);
+      return !/^\s*\d+\s*\|/.test(String(t.title || '')) && (String(t.status) !== '1' || open[String(t.id)] || used[String(t.id)]);
     }).sort(function (a, b) { return Number(b.id) - Number(a.id); });
     var rows = list.map(function (t) {
       var id = String(t.id), was = keep[id], a = String(t.assigned_to_id || ''), row = [];

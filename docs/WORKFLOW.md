@@ -158,7 +158,8 @@ Each line becomes a new ticket at the bottom of Dev Tickets and the cell clears 
   With no Dev, the tickets are made but not sent: pick a Dev and tick Freedcamp.
 - A ticket that has no Freedcamp task yet keeps the lines; tick its **Freedcamp** box and the subtasks are made right after.
 
-**Parent Tasks** lists the project's open tasks whose title is not a ticket (`12 | ...`), newest first, with their
+**Parent Tasks** lists the project's open tasks whose title is not a ticket (`12 | ...`) and completed ones a ticket still
+has as its Parent Task, newest first, with their
 assignee, status and how many subtasks are open. It refreshes itself every 15 minutes (and with *RDC QA > Refresh
 Parent Tasks list*). Rename or complete those tasks in Freedcamp.
 
