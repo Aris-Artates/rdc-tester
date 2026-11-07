@@ -1057,8 +1057,8 @@ function rqaDisconnectFreedcamp() {
   SpreadsheetApp.getActive().toast('Freedcamp disconnected' + (dev ? ' for ' + dev : '') + '.', 'Freedcamp', 5);
 }
 
-/** One Freedcamp API call with a secured key (HMAC-SHA1 of key + timestamp). Returns the response's data. */
-function rqaFc_(method, path, payload) {
+/** One Freedcamp API call with a secured key (HMAC-SHA1 of key + timestamp). Returns the response's data (`whole`: the whole body). */
+function rqaFc_(method, path, payload, whole) {
   var keys = rqaFcKeys_();
   if (!keys) throw new Error('Freedcamp is not connected for you (RDC QA > Connect Freedcamp)');
   var key = keys.props.getProperty('FREEDCAMP_API_KEY'), secret = keys.props.getProperty('FREEDCAMP_API_SECRET');
@@ -1077,7 +1077,33 @@ function rqaFc_(method, path, payload) {
   var body = {};
   try { body = JSON.parse(res.getContentText()); } catch (_) {}
   if (res.getResponseCode() >= 300 || (body.http_code && body.http_code >= 300)) throw new Error('Freedcamp ' + res.getResponseCode() + ': ' + (body.msg || res.getContentText().slice(0, 150)));
-  return body.data || {};
+  return whole ? body : body.data || {};
+}
+
+/**
+ * Every task of the project by id, read 200 at a time: one or two calls instead of one per ticket, which keeps
+ * a whole-sheet sync under Freedcamp's request limit. A task missing from it is read on its own (rqaFcTask_).
+ */
+function rqaFcProjectTasks_() {
+  var project = encodeURIComponent(rqaSetting_('Freedcamp project ID')), map = {};
+  for (var offset = 0, page = 0; page < 25; page++, offset += 200) {
+    var body = rqaFc_('get', 'tasks/?project_id=' + project + '&limit=200&offset=' + offset + '&status%5B%5D=0&status%5B%5D=1&status%5B%5D=2', null, true);
+    var list = (body.data && body.data.tasks) || [];
+    list.forEach(function (t) { if (t && t.id) map[String(t.id)] = t; });
+    if (!list.length || !(body.meta && body.meta.has_more)) break;
+  }
+  return map;
+}
+
+/** A reader of tasks by id that loads the whole project once, on first use, and reads any task missing from it alone. */
+function rqaFcTaskReader_(notes) {
+  var bulk = null;
+  return function (id) {
+    if (bulk === null) {
+      try { bulk = rqaFcProjectTasks_(); } catch (err) { bulk = {}; if (notes) notes.push('Could not read the whole task list at once (' + err.message + '), so tasks were read one by one'); }
+    }
+    return bulk[String(id)] || (rqaFc_('get', 'tasks/' + id).tasks || [])[0];
+  };
 }
 
 /** Freedcamp's users as { id, first, last, full }. Cached 6 h. */
@@ -1283,7 +1309,7 @@ function rqaFcTwoWay_(all) {
   var props = keys.props, done = JSON.parse(props.getProperty('FREEDCAMP_SYNCED') || '{}');
   var sp = PropertiesService.getScriptProperties(), pulled = JSON.parse(sp.getProperty('FREEDCAMP_PULLED') || '{}');
   var completeOn = /^y/i.test(rqaSetting_('Freedcamp: complete task when ticket Passed/Closed'));
-  var changed = false;
+  var changed = false, read = rqaFcTaskReader_(null);
   links.forEach(function (row, i) {
     var id = rqaFcTaskId_(row[0] && row[0].getLinkUrl());
     if (!id || (!all && !rqaFcHandles_(keys, String(devCol[i][0] || '')))) return;
@@ -1297,7 +1323,7 @@ function rqaFcTwoWay_(all) {
       if (done[id]) { rqaFc_('post', 'tasks/' + id, { status: 2 }); delete done[id]; out.reopened.push(num); return; }
       var next = RQA_FC_PULL[st];
       if (!next && !pulled[id]) return;
-      var t = (rqaFc_('get', 'tasks/' + id).tasks || [])[0] || {};
+      var t = read(id) || {};
       if (String(t.status) === '1') {
         if (!pulled[id] && next) {
           sh.getRange(RQA_T.first + i, h[RQA_TK.status] + 1).setValue(next);
@@ -1443,6 +1469,7 @@ function rqaFcPlan_(dir, sh, h, rows, explain) {
   var followers = dir === 'push' ? rqaFcPeople_('').followers : [];
   var items = [], notes = [], stopped = '';
   var get = function (r, k) { return sh.getRange(r, h[RQA_TK[k]] + 1); };
+  var read = rqaFcTaskReader_(notes);
 
   for (var n = 0; n < rows.length; n++) {
     var r = rows[n], title = String(get(r, 'ticket').getDisplayValue()).trim(), num = title.split('|')[0].trim();
@@ -1451,7 +1478,7 @@ function rqaFcPlan_(dir, sh, h, rows, explain) {
     if (!id) { if (explain) notes.push('#' + num + ': no Freedcamp task yet (tick its Freedcamp box)'); continue; }
     if (Date.now() - started > 4 * 60 * 1000) { stopped = items.length ? items[items.length - 1].num : num; break; }
     var t;
-    try { t = (rqaFc_('get', 'tasks/' + id).tasks || [])[0]; } catch (err) { notes.push('#' + num + ': could not read task ' + id + ' (' + err.message + ')'); continue; }
+    try { t = read(id); } catch (err) { notes.push('#' + num + ': could not read task ' + id + ' (' + err.message + ')'); continue; }
     if (!t) { notes.push('#' + num + ': task ' + id + ' was not found in Freedcamp'); continue; }
     var item = dir === 'push' ? rqaFcPushItem_(sh, h, r, num, title, id, t, tz, notes) : rqaFcPullItem_(sh, h, r, num, title, id, t, tz, notes, devBy, pulled);
     items.push(item);
