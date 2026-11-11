@@ -126,6 +126,20 @@ function onEdit(e) {
   if (name === RQA_CASES) return rqaCaseEdit_(e, sh);
 }
 
+/**
+ * A Dev cell typed by hand: several devs become one tidy list in the Dev list's spelling ("aris/shean" -> "Aris,
+ * Shean"); a name that is not in the Dev list is kept, with a note to add it there.
+ */
+function rqaDevEdited_(cell) {
+  var typed = String(cell.getValue() || '');
+  if (!typed.trim()) return;
+  var devs = rqaDevNames_(), list = rqaDevList_(typed, devs), text = rqaDevCell_(list);
+  if (text !== typed) cell.setValue(text);
+  var unknown = list.filter(function (d) { return devs.indexOf(d) < 0; });
+  if (unknown.length) SpreadsheetApp.getActive().toast(unknown.join(', ') + (unknown.length > 1 ? ' are' : ' is') +
+    ' not in the Dev list (Settings tab). Add them there so their Freedcamp tasks and dashboards follow.', 'Dev', 8);
+}
+
 function rqaTicketEdit_(e, sh) {
   var r = e.range.getRow(), c = e.range.getColumn();
   if (e.range.getA1Notation() === RQA_T.counter) {
@@ -135,6 +149,7 @@ function rqaTicketEdit_(e, sh) {
   }
   if (r < RQA_T.first || e.range.getNumRows() > 1) return;
   var h = rqaHeaders_(sh, RQA_T.head);
+  if (c === h[RQA_TK.dev] + 1) return rqaDevEdited_(e.range);
   if (c === h[RQA_TK.fix] + 1 && e.value === 'TRUE') {
     sh.getRange(r, c).setValue(false);
     var parent = rqaParseTicket_(sh.getRange(r, h[RQA_TK.ticket] + 1).getDisplayValue());
@@ -643,8 +658,10 @@ function rqaBuildDashboard_(ss, L) {
   d.getRange('A14').setFormula("=IFERROR(FILTER('" + RQA_SETTINGS + "'!" + rqaListLetter_('Dev') + '2:' + rqaListLetter_('Dev') + ",'" + RQA_SETTINGS + "'!" + rqaListLetter_('Dev') + '2:' + rqaListLetter_('Dev') + '<>""),"")');
   var f = [];
   for (var r = 14; r <= 23; r++) {
-    var dv = '$A' + r, by = function (s) { return 'COUNTIFS(' + T.dev + ',' + dv + ',' + T.status + ',"' + s + '")'; };
-    f.push(['=IF(' + dv + '="","",COUNTIF(' + T.dev + ',' + dv + '))', '=IF(' + dv + '="","",' + by(RQA_S.inDev) + ')', '=IF(' + dv + '="","",' + by(RQA_S.ready) + '+' + by(RQA_S.retest) + ')',
+    // A ticket counts for each of its devs ("Aris, Shean" counts for both).
+    var dv = '$A' + r, mine = rqaDevMatch_(T.dev, dv);
+    var by = function (s) { return 'SUMPRODUCT(' + mine + '*(' + T.status + '="' + s + '"))'; };
+    f.push(['=IF(' + dv + '="","",SUMPRODUCT(--' + mine + '))', '=IF(' + dv + '="","",' + by(RQA_S.inDev) + ')', '=IF(' + dv + '="","",' + by(RQA_S.ready) + '+' + by(RQA_S.retest) + ')',
       '=IF(' + dv + '="","",' + by(RQA_S.failed) + '+' + by(RQA_S.fixing) + ')', '=IF(' + dv + '="","",' + by(RQA_S.passed) + ')']);
   }
   d.getRange(14, 2, 10, 5).setFormulas(f).setHorizontalAlignment('center');
@@ -711,7 +728,7 @@ function rqaBuildDevDashboard_(ss, L, st) {
   var devs = rqaListValues_(st, 'Dev');
   d.getRange('B4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['All'].concat(devs), true).build())
     .setValue('All').setBackground('#fff3cd').setFontWeight('bold');
-  var mine = '((' + T.dev + '=$B$4)+($B$4="All"))';
+  var mine = '(' + rqaDevMatch_(T.dev, '$B$4') + '+($B$4="All"))';
   var cnt = function (s) { return '=SUMPRODUCT((' + T.status + '="' + s + '")*' + mine + ')'; };
   [RQA_S.failed, RQA_S.fixing, RQA_S.inDev, RQA_S.ready, RQA_S.retest, RQA_S.passed].forEach(function (s, i) {
     rqaCard_(d, 5, i + 1, s, cnt(s), RQA_STATUS_COLOURS[s]);
@@ -770,9 +787,23 @@ function rqaResultRules_(range) {
 function rqaLetter_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 function rqaListLetter_(name) { return rqaLetter_(RQA_LIST_KEYS.indexOf(name) + 1); }
 
+/**
+ * A sheet formula that is TRUE where the Dev cells in `range` include the dev in `who`: a cell may list several
+ * ("Aris, Shean"), so it compares ",aris,shean," with ",aris," (case and spaces ignored). Works on whole ranges in
+ * SUMPRODUCT and FILTER.
+ */
+function rqaDevMatch_(range, who) {
+  return 'ISNUMBER(SEARCH(","&SUBSTITUTE(' + who + '," ","")&",",","&SUBSTITUTE(' + range + '," ","")&","))';
+}
+
 function rqaListRule_(st, name) {
   var c = rqaListLetter_(name);
-  return SpreadsheetApp.newDataValidation().requireValueInRange(st.getRange(c + '2:' + c), true).setAllowInvalid(false).build();
+  var rule = SpreadsheetApp.newDataValidation().requireValueInRange(st.getRange(c + '2:' + c), true);
+  // A ticket can have several devs ("Aris, Shean"): the list still offers one name, typing more is allowed and
+  // onEdit tidies it (rqaDevEdited_). Turning on "Allow multiple selections" in the dropdown's settings writes the
+  // same text, so either works.
+  if (name === 'Dev') return rule.setAllowInvalid(true).setHelpText('Pick a dev, or type several separated by commas, e.g. "Aris, Shean".').build();
+  return rule.setAllowInvalid(false).build();
 }
 
 function rqaListValues_(st, name) {
@@ -1028,10 +1059,41 @@ function rqaFcSetDev_(dev, on) {
   if (on) reg[dev] = true; else delete reg[dev];
   PropertiesService.getScriptProperties().setProperty('FREEDCAMP_DEVS', JSON.stringify(reg));
 }
-/** Whether a ticket of this dev can be sent: the dev connected, or the old shared key exists. */
-function rqaFreedcampReady_(dev) { return !!rqaFcDevs_()[dev] || !!PropertiesService.getScriptProperties().getProperty('FREEDCAMP_API_KEY'); }
-/** Inside a trigger: should THIS person's trigger act on a ticket of `dev`? (Exactly one trigger says yes.) */
-function rqaFcHandles_(keys, dev) { return keys && (keys.shared ? !rqaFcDevs_()[dev] : keys.dev === dev); }
+/**
+ * A Dev cell as its devs. A ticket may have several ("Aris, Shean"; also "Aris & Shean", "Aris/Shean", "Aris and
+ * Shean"). Names in the Dev list come back in its spelling; any other name is kept as typed.
+ */
+function rqaDevList_(cell, devs) {
+  devs = devs || rqaDevNames_();
+  var seen = {};
+  return String(cell || '').split(/\s*(?:,|;|&|\/|\band\b)\s*/i).map(function (n) {
+    var t = n.trim(), hit = devs.filter(function (d) { return d.toLowerCase() === t.toLowerCase(); })[0];
+    return hit || t;
+  }).filter(function (n) { if (!n || seen[n.toLowerCase()]) return false; seen[n.toLowerCase()] = 1; return true; });
+}
+/** The Dev list from Settings, read once per run. */
+var RQA_DEV_NAMES = null;
+function rqaDevNames_() {
+  if (!RQA_DEV_NAMES) RQA_DEV_NAMES = rqaListValues_(SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS), 'Dev');
+  return RQA_DEV_NAMES;
+}
+/** Devs as one Dev cell: "Aris, Shean" (the same text a multi-select dropdown writes). */
+function rqaDevCell_(list) { return list.join(', '); }
+
+/** Whether a ticket of this Dev cell can be sent: one of its devs connected, or the old shared key exists. */
+function rqaFreedcampReady_(dev) {
+  var reg = rqaFcDevs_();
+  return rqaDevList_(dev).some(function (d) { return reg[d]; }) || !!PropertiesService.getScriptProperties().getProperty('FREEDCAMP_API_KEY');
+}
+/**
+ * Inside a trigger: should THIS person's trigger act on a ticket of this Dev cell? Exactly one trigger says yes:
+ * the first of the ticket's devs who connected Freedcamp, else the old shared key.
+ */
+function rqaFcHandles_(keys, dev) {
+  if (!keys) return false;
+  var reg = rqaFcDevs_(), first = rqaDevList_(dev).filter(function (d) { return reg[d]; })[0];
+  return keys.shared ? !first : !!first && first === keys.dev;
+}
 
 /** Menu: the person running it connects their own Freedcamp key for their own tickets. */
 function rqaConnectFreedcamp() {
@@ -1241,7 +1303,12 @@ function rqaCreateFreedcampTask_(title, description, dev, parentId, opts) {
   if (open) people.warnings = people.warnings.filter(function (w) { return w.indexOf('assigned to you') < 0; });
   var fields = { title: title, description: opts && opts.plain ? String(description || '') : rqaFcDescription_(title, description), project_id: project, priority: Number(rqaSetting_('Freedcamp priority (0-3)')) || 3 };
   if (open) fields.assigned_to_id = '0';
-  else { fields.assigned_to_id = people.assignee; fields.start_date = today; fields.due_date = today; }
+  else {
+    // Every dev of the ticket; assigned_to_id stays the first, so the task has an assignee even where Freedcamp
+    // takes only one.
+    fields.assigned_to_id = people.assignee; fields.assigned_ids = people.assignees;
+    fields.start_date = today; fields.due_date = today;
+  }
   if (parentId) fields.h_parent_id = parentId;
   var data = rqaFc_('post', 'tasks', fields);
   var task = (data.tasks || [])[0] || {};
@@ -1256,25 +1323,32 @@ function rqaCreateFreedcampTask_(title, description, dev, parentId, opts) {
 }
 
 /**
- * Who a ticket's task goes to: the ticket's Dev (by the Freedcamp Name beside it in Settings), else whoever
- * connected Freedcamp; followers from Settings. Names that match no Freedcamp user are listed in warnings.
+ * Who a ticket's task goes to: every dev in the ticket's Dev cell (by the Freedcamp Name beside each in Settings),
+ * else whoever connected Freedcamp; followers from Settings. Names that match no Freedcamp user are listed in
+ * warnings. `assignee` is the first (Freedcamp's main assignee); `assignees` all of them.
  */
 function rqaFcPeople_(dev) {
   var st = SpreadsheetApp.getActive().getSheetByName(RQA_SETTINGS);
   var devs = rqaListValues_(st, 'Dev'), names = st.getRange(2, RQA_LIST_KEYS.indexOf('Freedcamp Name') + 1, Math.max(devs.length, 1), 1).getValues();
-  var fcName = dev && devs.indexOf(dev) >= 0 ? String(names[devs.indexOf(dev)][0] || '') : '';
-  var warnings = [];
-  var assignee = rqaFcUserId_(fcName);
-  if (!assignee) {
-    warnings.push(!dev ? 'no Dev on the ticket, assigned to you' : !fcName ? dev + ' has no Freedcamp Name in Settings, assigned to you' : '"' + fcName + '" not found in Freedcamp, assigned to you');
-    assignee = rqaFcMe_();
+  var list = rqaDevList_(dev, devs), warnings = [], ids = [];
+  list.forEach(function (d) {
+    var fcName = devs.indexOf(d) >= 0 ? String(names[devs.indexOf(d)][0] || '') : '';
+    var id = rqaFcUserId_(fcName);
+    if (id && ids.indexOf(String(id)) < 0) ids.push(String(id));
+    else if (!id) warnings.push(devs.indexOf(d) < 0 ? '"' + d + '" is not in the Dev list' : !fcName ? d + ' has no Freedcamp Name in Settings' : '"' + fcName + '" not found in Freedcamp');
+  });
+  if (!ids.length) {
+    // The original wording ("..., assigned to you") is what the callers look for.
+    warnings = [(list.length ? warnings.join('; ') : 'no Dev on the ticket') + ', assigned to you'];
+    ids = [String(rqaFcMe_())];
   }
+  var assignee = ids[0];
   var followers = [];
   rqaSetting_('Freedcamp followers').split(',').map(function (n) { return n.trim(); }).filter(String).forEach(function (n) {
     var id = rqaFcUserId_(n);
     if (id) followers.push(Number(id)); else warnings.push('follower "' + n + '" not found in Freedcamp');
   });
-  return { assignee: String(assignee || 0), followers: followers, warnings: warnings };
+  return { assignee: String(assignee || 0), assignees: ids, followers: followers, warnings: warnings };
 }
 
 /** The Freedcamp user id of the key's owner (the running person, or the old shared key's owner). */
@@ -1606,7 +1680,14 @@ function rqaFcPushItem_(sh, h, r, num, title, id, t, tz, notes) {
   if (dev) {
     var people = rqaFcPeople_(dev);
     if (people.warnings.some(function (w) { return w.indexOf('assigned to you') >= 0; })) notes.push('#' + num + ': ' + dev + ' has no Freedcamp user (Settings, Freedcamp Name), assignee left as it is');
-    else if (String(t.assigned_to_id) !== String(people.assignee)) { edit.assigned_to_id = people.assignee; item.changes.push('assignee → ' + dev); }
+    else {
+      people.warnings.forEach(function (w) { if (!/^follower /.test(w)) notes.push('#' + num + ': ' + w + ', left out of the assignees'); });
+      var hasIds = rqaFcAssignees_(t).slice().sort().join(','), wantIds = people.assignees.slice().sort().join(',');
+      if (hasIds !== wantIds) {
+        edit.assigned_to_id = people.assignee; edit.assigned_ids = people.assignees;
+        item.changes.push((people.assignees.length > 1 ? 'assignees → ' : 'assignee → ') + rqaDevCell_(rqaDevList_(dev)));
+      }
+    }
   }
   var date = get('date').getValue();
   if (date instanceof Date) {
@@ -1618,6 +1699,15 @@ function rqaFcPushItem_(sh, h, r, num, title, id, t, tz, notes) {
   var want = rqaFcPushStatus_(String(get('status').getValue() || ''));
   if (want != null && String(t.status) !== want) { item.push.status = want; item.changes.push('status → ' + RQA_FC_STATUS_NAMES[want]); }
   return item;
+}
+
+/**
+ * A task's assignees as user id strings: assigned_ids when Freedcamp gives them (a task with several assignees),
+ * else assigned_to_id; "0" / "-1" (nobody, everyone) count as none.
+ */
+function rqaFcAssignees_(t) {
+  var ids = Array.isArray(t.assigned_ids) && t.assigned_ids.length ? t.assigned_ids : [t.assigned_to_id];
+  return ids.map(String).filter(function (x) { return x && x !== '0' && x !== '-1' && x !== 'undefined'; });
 }
 
 /** Freedcamp -> Sheet for one ticket: what would change on its row. */
@@ -1634,11 +1724,19 @@ function rqaFcPullItem_(sh, h, r, num, title, id, t, tz, notes, devBy, pulled) {
   var fcDesc = rqaFcCleanDesc_(t.description), sheetDesc = String(get('desc').getValue() || '');
   if (fcDesc && !sheetDesc.trim()) add('description', function () { get('desc').setValue(fcDesc); });
   else if (fcDesc && !rqaFcSameText_(fcDesc, sheetDesc)) notes.push('#' + num + ': the descriptions differ, so the ticket keeps its own');
-  var who = String(t.assigned_to_id || '0');
-  if (who !== '0' && who !== '-1') {
-    var dev = devBy[who];
-    if (!dev) notes.push('#' + num + ': the task is assigned to ' + (t.assigned_to_fullname || 'user ' + who) + ', who is not in the Dev list, so Dev is left as it is');
-    else if (String(get('dev').getValue() || '') !== dev) add('Dev → ' + dev, function () { get('dev').setValue(dev); });
+  var who = rqaFcAssignees_(t);
+  if (who.length) {
+    var known = who.map(function (u) { return devBy[u]; }).filter(String);
+    var cellNow = String(get('dev').getValue() || ''), had = rqaDevList_(cellNow);
+    var same = function (a, b) { return a.slice().sort().join('|').toLowerCase() === b.slice().sort().join('|').toLowerCase(); };
+    if (known.length < who.length) {
+      notes.push('#' + num + ': the task is assigned to ' + (known.length ? 'someone' : (t.assigned_to_fullname || 'user ' + who[0])) + ' not in the Dev list, so Dev is left as it is');
+    } else if (!Array.isArray(t.assigned_ids) && known.length === 1 && had.indexOf(known[0]) >= 0) {
+      // Freedcamp named only the main assignee: a ticket with several devs keeps them all.
+    } else if (!same(known, had)) {
+      var cell = rqaDevCell_(known);
+      add('Dev → ' + cell, function () { get('dev').setValue(cell); });
+    }
   }
   var day = rqaFcDay_(t.start_ts) || rqaFcDay_(t.due_ts), cur = get('date').getValue();
   if (day && (!(cur instanceof Date) || Utilities.formatDate(cur, tz, 'yyyy-MM-dd') !== day)) {
@@ -1804,11 +1902,14 @@ function rqaRefreshParents_(tasks) {
       return !/^\s*\d+\s*\|/.test(String(t.title || '')) && (String(t.status) !== '1' || open[String(t.id)] || used[String(t.id)]);
     }).sort(function (a, b) { return Number(b.id) - Number(a.id); });
     var rows = list.map(function (t) {
-      var id = String(t.id), was = keep[id], a = String(t.assigned_to_id || ''), row = [];
+      var id = String(t.id), was = keep[id], who = rqaFcAssignees_(t), row = [];
       for (var i = 0; i < W; i++) row.push('');
-      row[P.task] = 'Task ' + id; row[P.title] = String(t.title || ''); row[P.assignee] = devBy[a] || users[a] || '';
+      // Every assignee (a task can have several): Dev names where known, else Freedcamp's names.
+      var assignees = who.map(function (u) { return devBy[u] || users[u] || ''; }).filter(String);
+      var devs = who.map(function (u) { return devBy[u]; }).filter(String);
+      row[P.task] = 'Task ' + id; row[P.title] = String(t.title || ''); row[P.assignee] = assignees.join(', ');
       row[P.status] = RQA_FC_STATUS_NAMES[String(t.status)] || ''; row[P.subs] = total[id] ? (open[id] || 0) + ' open of ' + total[id] : '';
-      row[P.newSubs] = was ? was[P.newSubs] : ''; row[P.dev] = (was && was[P.dev]) || devBy[a] || '';
+      row[P.newSubs] = was ? was[P.newSubs] : ''; row[P.dev] = (was && was[P.dev]) || rqaDevCell_(devs);
       return row;
     }).concat(pending);
     if (n) sh.getRange(2, 1, n, W).clearContent();
