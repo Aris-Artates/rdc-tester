@@ -51,8 +51,8 @@ var RQA_TK = {
   cases: 'Test Cases', qa: 'QA Result', lastTested: 'Last Tested', readyAt: 'Ready At', notes: 'Notes', parent: 'Parent Task',
   newSubs: 'New Subtasks',
 };
-var RQA_TK_ORDER = ['ticket', 'branch', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
-  'cases', 'qa', 'lastTested', 'readyAt', 'notes', 'parent', 'newSubs'];
+var RQA_TK_ORDER = ['ticket', 'branch', 'time', 'date', 'dev', 'status', 'desc', 'fc', 'parent', 'fix', 'fixOf', 'reworkedBy', 'fixes', 'type', 'page',
+  'cases', 'qa', 'lastTested', 'readyAt', 'notes', 'newSubs'];
 
 // ---- Parent Tasks: header row 1. Pick list (hidden) feeds the Parent Task dropdown on Dev Tickets.
 var RQA_PT = { task: 'Task', title: 'Title', assignee: 'Assignee', status: 'Status', subs: 'Subtasks', newSubs: 'New Subtasks', dev: 'Dev', pick: 'Pick list' };
