@@ -1164,19 +1164,29 @@ function rqaFc_(method, path, payload, whole) {
 }
 
 /**
- * Every task of the project by id, read 200 at a time: one or two calls instead of one per ticket, which keeps
+ * Every task of the project by id, read 200 at a time: a few calls instead of one per ticket, which keeps
  * a whole-sheet sync under Freedcamp's request limit. A task missing from it is read on its own (rqaFcTask_).
+ * The offset steps by the number of tasks a page actually returned, and reading goes on until a page brings
+ * no new task: meta.has_more alone ended the read early and left out the newest tasks.
+ * RQA_FC_PROJECT_READ tells how the last read went (tasks, pages), for the Parent Tasks toast.
  */
 function rqaFcProjectTasks_() {
-  var project = encodeURIComponent(rqaSetting_('Freedcamp project ID')), map = {};
-  for (var offset = 0, page = 0; page < 25; page++, offset += 200) {
+  var project = encodeURIComponent(rqaSetting_('Freedcamp project ID')), map = {}, count = 0, pages = 0;
+  for (var offset = 0; pages < 40; ) {
     var body = rqaFc_('get', 'tasks/?project_id=' + project + '&limit=200&offset=' + offset + '&status%5B%5D=0&status%5B%5D=1&status%5B%5D=2', null, true);
-    var list = (body.data && body.data.tasks) || [];
-    list.forEach(function (t) { if (t && t.id) map[String(t.id)] = t; });
-    if (!list.length || !(body.meta && body.meta.has_more)) break;
+    var list = (body.data && body.data.tasks) || [], added = 0;
+    pages++;
+    list.forEach(function (t) { if (t && t.id && !map[String(t.id)]) { map[String(t.id)] = t; added++; } });
+    count += added;
+    console.log('Freedcamp tasks page ' + pages + ': offset ' + offset + ', ' + list.length + ' returned, ' + added + ' new, has_more ' +
+      (body.meta && body.meta.has_more) + (list.length ? ', ids ' + list[0].id + '..' + list[list.length - 1].id : ''));
+    if (!list.length || !added) break;
+    offset += list.length;
   }
+  RQA_FC_PROJECT_READ = { tasks: count, pages: pages };
   return map;
 }
+var RQA_FC_PROJECT_READ = null;
 
 /**
  * A reader of tasks by id that loads the whole project once, on first use, and reads any task missing from it alone.
@@ -1898,6 +1908,14 @@ function rqaRefreshParents_(tasks) {
       var pr = tk.getRange(RQA_T.first, th[RQA_TK.parent] + 1, tn, 1), prt = pr.getRichTextValues(), prd = pr.getDisplayValues();
       prt.forEach(function (x, i) { var id = rqaFcTaskId_(x[0] && x[0].getLinkUrl()) || rqaFcTaskId_(prd[i][0]); if (id) used[id] = 1; });
     }
+    // A task a Parent Task cell points to that the bulk read did not bring is read on its own (a few at most).
+    var inProject = String(rqaSetting_('Freedcamp project ID'));
+    Object.keys(used).filter(function (id) { return !tasks[id]; }).slice(0, 10).forEach(function (id) {
+      try {
+        var t = (rqaFc_('get', 'tasks/' + id).tasks || [])[0];
+        if (t && t.id && (!t.project_id || String(t.project_id) === inProject)) tasks[String(t.id)] = t;
+      } catch (_) {}
+    });
     var list = Object.keys(tasks).map(function (id) { return tasks[id]; }).filter(function (t) {
       return !/^\s*\d+\s*\|/.test(String(t.title || '')) && (String(t.status) !== '1' || open[String(t.id)] || used[String(t.id)]);
     }).sort(function (a, b) { return Number(b.id) - Number(a.id); });
@@ -1950,7 +1968,8 @@ function rqaRefreshParentTasks() {
   if (!rqaFcKeys_()) return ui.alert('Parent Tasks', 'Connect Freedcamp first: RDC QA > Connect Freedcamp.', ui.ButtonSet.OK);
   try {
     var n = rqaRefreshParents_(rqaFcProjectTasks_());
-    SpreadsheetApp.getActive().toast(n + ' parent task(s) listed.', 'Parent Tasks', 5);
+    var read = RQA_FC_PROJECT_READ;
+    SpreadsheetApp.getActive().toast(n + ' parent task(s) listed' + (read ? ' (' + read.tasks + ' Freedcamp tasks read in ' + read.pages + ' page(s))' : '') + '.', 'Parent Tasks', 8);
   } catch (err) {
     ui.alert('Parent Tasks', / 429/.test(err.message) ? RQA_FC_LIMITED + '.' : err.message, ui.ButtonSet.OK);
   }
