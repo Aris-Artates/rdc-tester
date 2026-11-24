@@ -1166,22 +1166,22 @@ function rqaFc_(method, path, payload, whole) {
 /**
  * Every task of the project by id, read 200 at a time: a few calls instead of one per ticket, which keeps
  * a whole-sheet sync under Freedcamp's request limit. A task missing from it is read on its own (rqaFcTask_).
- * The offset steps by the number of tasks a page actually returned, and reading goes on until a page brings
- * no new task: meta.has_more alone ended the read early and left out the newest tasks.
+ * Freedcamp's limit and offset count top-level tasks, each page also carries their subtasks (limit 200 brought
+ * 634 rows), and meta.has_more never comes back. So the offset steps by the limit, and reading goes on until a
+ * page brings no new task; stopping on has_more left out every task after the first 200 top-level ones.
  * RQA_FC_PROJECT_READ tells how the last read went (tasks, pages), for the Parent Tasks toast.
  */
 function rqaFcProjectTasks_() {
-  var project = encodeURIComponent(rqaSetting_('Freedcamp project ID')), map = {}, count = 0, pages = 0;
-  for (var offset = 0; pages < 40; ) {
-    var body = rqaFc_('get', 'tasks/?project_id=' + project + '&limit=200&offset=' + offset + '&status%5B%5D=0&status%5B%5D=1&status%5B%5D=2', null, true);
+  var project = encodeURIComponent(rqaSetting_('Freedcamp project ID')), map = {}, count = 0, pages = 0, limit = 200;
+  for (var offset = 0; pages < 40; offset += limit) {
+    var body = rqaFc_('get', 'tasks/?project_id=' + project + '&limit=' + limit + '&offset=' + offset + '&status%5B%5D=0&status%5B%5D=1&status%5B%5D=2', null, true);
     var list = (body.data && body.data.tasks) || [], added = 0;
     pages++;
     list.forEach(function (t) { if (t && t.id && !map[String(t.id)]) { map[String(t.id)] = t; added++; } });
     count += added;
-    console.log('Freedcamp tasks page ' + pages + ': offset ' + offset + ', ' + list.length + ' returned, ' + added + ' new, has_more ' +
-      (body.meta && body.meta.has_more) + (list.length ? ', ids ' + list[0].id + '..' + list[list.length - 1].id : ''));
+    console.log('Freedcamp tasks page ' + pages + ': offset ' + offset + ', ' + list.length + ' returned, ' + added + ' new' +
+      (list.length ? ', ids ' + list[0].id + '..' + list[list.length - 1].id : ''));
     if (!list.length || !added) break;
-    offset += list.length;
   }
   RQA_FC_PROJECT_READ = { tasks: count, pages: pages };
   return map;
