@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font: 13px/1.4 Arial, sans-serif; color: #202124; margin: 0; padding: 12px; }
+    h3 { font-size: 13px; margin: 14px 0 6px; color: #1f2a44; }
+    label { display: block; font-weight: bold; margin-bottom: 4px; }
+    input[type=text] { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #c4c7c5; border-radius: 4px; font: inherit; }
+    .row { display: flex; gap: 6px; margin-top: 6px; }
+    button { font: inherit; padding: 7px 12px; border-radius: 4px; border: 1px solid #c4c7c5; background: #fff; cursor: pointer; }
+    button.primary { background: #1f2a44; color: #fff; border-color: #1f2a44; width: 100%; font-weight: bold; }
+    button:disabled { opacity: .55; cursor: default; }
+    .muted { color: #5f6b7a; font-size: 12px; }
+    #zone { border: 2px dashed #9aa0a6; border-radius: 6px; padding: 14px; text-align: center; color: #5f6b7a; outline: none; min-height: 90px; }
+    #zone.over, #zone:focus { border-color: #1a73e8; background: #e8f0fe; color: #1a73e8; }
+    #preview { max-width: 100%; margin-top: 8px; border: 1px solid #dadce0; border-radius: 4px; display: none; }
+    #target { background: #f1f3f4; border-radius: 4px; padding: 6px 8px; }
+    .msg { margin-top: 10px; padding: 8px; border-radius: 4px; display: none; word-break: break-all; }
+    .ok { background: #e6f4ea; color: #0b5d1e; }
+    .err { background: #fce8e6; color: #a50e0e; }
+    .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid #fff; border-right-color: transparent; border-radius: 50%; animation: s .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+    @keyframes s { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <label for="folder">Google Drive Folder ID</label>
+  <input type="text" id="folder" placeholder="Folder ID or folder link" autocomplete="off">
+  <div class="row"><button id="saveFolder">Save folder</button><span class="muted" id="folderName"></span></div>
+  <div class="muted" style="margin-top:4px">Saved for the whole team. Everyone needs edit access to this folder.</div>
+
+  <h3>Screenshot</h3>
+  <div id="zone" tabindex="0">Click here and press <b>Ctrl+V</b> to paste a screenshot (e.g. from Snipping Tool),<br>or drop an image file here.</div>
+  <img id="preview" alt="Screenshot preview">
+  <div class="row"><button id="clear" disabled>Clear</button><span class="muted" id="size"></span></div>
+
+  <h3>Insert into</h3>
+  <div id="target" class="muted">Loading…</div>
+  <div class="row"><button id="refresh">Use current selection</button></div>
+
+  <div style="margin-top:14px"><button class="primary" id="upload" disabled>Upload &amp; Insert</button></div>
+  <div class="msg" id="msg"></div>
+
+  <script>
+    var img = null; // { data: base64 without prefix, type: mime }
+    var $ = function (id) { return document.getElementById(id); };
+    function show(text, ok, html) { var m = $('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.style.display = 'block'; if (html) m.innerHTML = html; else m.textContent = text; }
+    function hideMsg() { $('msg').style.display = 'none'; }
+    function canUpload() { $('upload').disabled = !img || !$('folder').value.trim(); }
+    function err(e) { return (e && e.message) || String(e); }
+
+    function setTarget(t) {
+      var el = $('target');
+      if (!t) { el.textContent = 'No cell selected.'; return; }
+      el.textContent = t.sheet + '!' + t.a1 + (t.testCaseId ? '  ·  ' + t.testCaseId : '') + (t.header ? '  ·  ' + t.header : '');
+      el.className = t.blocked ? 'err' : 'muted';
+      if (t.blocked) el.textContent += '  —  ' + t.blocked;
+    }
+    function loadState() {
+      google.script.run.withSuccessHandler(function (s) {
+        if (s.folderId && !$('folder').value) $('folder').value = s.folderId;
+        $('folderName').textContent = s.folderName ? 'Folder: ' + s.folderName : (s.folderId ? 'Folder can’t be opened' : 'No folder saved yet');
+        setTarget(s.target); canUpload();
+      }).withFailureHandler(function (e) { show(err(e)); }).rqaProofState();
+    }
+
+    function takeFile(file) {
+      if (!file || !/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { show('Paste or drop a PNG, JPG, GIF or WebP image.'); return; }
+      if (file.size > 10 * 1024 * 1024) { show('The image is over 10 MB.'); return; }
+      var r = new FileReader();
+      r.onload = function () {
+        var url = String(r.result);
+        img = { data: url.slice(url.indexOf(',') + 1), type: file.type };
+        $('preview').src = url; $('preview').style.display = 'block';
+        $('size').textContent = file.type.replace('image/', '').toUpperCase() + ', ' + Math.max(1, Math.round(file.size / 1024)) + ' KB';
+        $('clear').disabled = false; hideMsg(); canUpload();
+      };
+      r.readAsDataURL(file);
+    }
+
+    document.addEventListener('paste', function (e) {
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) if (items[i].kind === 'file' && /^image\//.test(items[i].type)) { e.preventDefault(); takeFile(items[i].getAsFile()); return; }
+      if (document.activeElement === $('zone')) show('The clipboard has no image. Take a screenshot first (Win+Shift+S).');
+    });
+    var zone = $('zone');
+    ['dragenter', 'dragover'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('over'); }); });
+    zone.addEventListener('drop', function (e) { takeFile(e.dataTransfer.files[0]); });
+    document.addEventListener('dragover', function (e) { e.preventDefault(); });
+    document.addEventListener('drop', function (e) { e.preventDefault(); });
+
+    $('clear').onclick = function () { img = null; $('preview').style.display = 'none'; $('preview').removeAttribute('src'); $('size').textContent = ''; this.disabled = true; canUpload(); };
+    $('folder').oninput = canUpload;
+    $('refresh').onclick = loadState;
+    $('saveFolder').onclick = function () {
+      var b = this; b.disabled = true; hideMsg();
+      google.script.run.withSuccessHandler(function (s) {
+        b.disabled = false; $('folder').value = s.folderId; $('folderName').textContent = 'Folder: ' + s.folderName; show('Folder saved for the team.', true); canUpload();
+      }).withFailureHandler(function (e) { b.disabled = false; show(err(e)); }).rqaProofSaveFolder($('folder').value);
+    };
+    $('upload').onclick = function () {
+      var b = this; b.disabled = true; b.innerHTML = '<span class="spin"></span>Uploading…'; hideMsg();
+      google.script.run.withSuccessHandler(function (r) {
+        b.innerHTML = 'Upload &amp; Insert';
+        show('', true, 'Inserted in ' + r.cell + '.<br><a href="' + r.url + '" target="_blank">' + r.name + '</a>' +
+          '<div class="row"><input type="text" id="url" readonly value="' + r.url + '"><button id="copy">Copy</button></div>');
+        $('copy').onclick = function () { $('url').select(); document.execCommand('copy'); this.textContent = 'Copied'; };
+        $('clear').onclick(); loadState();
+      }).withFailureHandler(function (e) { b.innerHTML = 'Upload &amp; Insert'; canUpload(); show(err(e)); loadState(); })
+        .rqaProofUpload(img.data, img.type, $('folder').value);
+    };
+    loadState();
+  </script>
+</body>
+</html>

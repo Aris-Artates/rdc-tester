@@ -115,6 +115,8 @@ function onOpen() {
     .addItem('Connect Freedcamp…', 'rqaConnectFreedcamp')
     .addItem('Disconnect Freedcamp', 'rqaDisconnectFreedcamp')
     .addItem('Create checker token…', 'rqaCreateToken')
+    .addSeparator()
+    .addItem('Screenshot Proof Uploader', 'rqaOpenProofUploader')
     .addToUi();
 }
 
@@ -2087,3 +2089,98 @@ function rqaFcDrainQueue_(keys) {
 // The two button images (PNG, 3x), placed by rqaAddSyncButton_.
 var RQA_PUSH_BUTTON_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAcIAAABFCAYAAADZ2uaRAAAUx0lEQVR42u3deVxN+f8H8NetdG8pbVLpRmWo0EYbkTVrliFCNZYshb4YRmgQDcaYYRgRI7vBYDD2fR9kqWhB0aJNy21TaP394ZFfdc+53dJ2b+/nf51z7uece+678z6fz/l8PoeDGmrfeWAZCCGEkCYqPvIqpybbcyj5EUIIac5JkUMJkBBCSHNOiDKUBAkhhEg7UTlNhpIgIYSQ5pwMZSgJEkIIac7JUIaSICGEkOacDGUoCRJCCGnOyVCGTgchhJDmTIZqg4QQQppzrZBqhIQQQqhGSAghhDRXHGoWJYQQQjVCQgghhBIhIYQQ0vzI0SkQ5jV9AnwWeAgt/3PvcazZsINOECENxNXFCWtWzBNafvTEBfis2EgniFAirEpWVgY23c3Qz8EGJkaG6GCgB5VWSlBQUEBRUREKPnzEu7QMxCUk41n4K9y6+wgRUTEUBaTG7l05CN22WrX6bEZmFqwcxtNJJIQSYd0mwHHfDsa82e7Q0dJk3IbLlQeXKw811VYw7mSIIQN7YfH8aZjq5Ysbt4MpEgghhBKhZGrZUhFbf/VFPwebWn1ehkOPScXB43HR09YC/XrboLtlFwwb60knhRBCibCxcTgcbNv4I/r0sqZfsj6CQ1YWbhNGoJ+DDeyszcHlygMA8vLy6eQQQigRNgUuY4dUmwSLi4uRli6AnJwc1NVaQU6O+geJS1FRAX7L5tCJIIRQImyqvps4inXdkeMXsPvAP4h+HY+ysrIvNRxjI0P07tkd48cMgUF7XYoAUqemevnizr0nIrcpA81hQQglwjqgrqaCzsYdGNcF7T8B//WBwrXDkhKER0YjPDIagUFH4Tx6ELJycikKSJ0pLS1DcUkJnQhCKBHWPx1tTdZ14vQCLSsrw7GTlygCCCGEEqFkatGC/dC7mXfG3ftP63X/PWwsMGncMFiYmUCrjQYKPnxEbFwirty4j32HTiG/4APEHfox1LE3BvTtAQszY2hqqKFFCzlkZeciNj4R9x6E4Pipy0h9l4GaDCepbZmW5iY4+dcWkeUrK7dEXMSVSstmL/DH+cu36T8KdT+Bg5KSIqa5jcGwwQ5op6eDkuISuHosxrOIVxIRU2yMOxli7ChH9O7ZDdpamlBU4CE9Q4CnoZH469h53A8O/epza9BeF4MH9oKtlRkMDfhQU22FloqK+FRYiMzMbLyJe4tbdx/h6ImLjP+zXK48rCy7oIeNBUyMDfGNYTuoq6pAQZGHvLx8pKUL8DQsEhcu38Hte4+/eqKOdnwduLo4oU8vK/DbaqO4pASJSam4cOUO/vr7HLKyK7dgGejz4TJmCBzsraCjXX4Os/DwcRiC9v+DyBevv+p4zLsawcV5KGytzKCjrYnSklK8S8/E/YehOHbyEsLCX1IibEyi/uG8PV3xJj4RZy/crPP9crnyWLVsLiY4D620XF6+BSzNTWBpbgL3iSPw3YyliH4dL7KsPr2s4bd0Ngz0+ULrtLVaQ1urNXrYWMB7lit27jmGTQH7UFpa1uBlQkJ7FJc/G5Zk6uoqOLr3N3Ts0B5VOzJJakxxufJY4eOFieOGQ0aGU2mdblst6LbVwohh/RCw8zCSU9Nqdd70+NpYunAGhgzsLbQPAFBU4EGRrw09vjb69LJGYnIaLl+7V2mbNSvmYbRTf7Rsqci4DzXVVlBTbQWjjvqY6DwMIWFRmLtoDZKS39UqXmdOHYcf5k+DnKxspXWqKsro2rkj3CaMgPv0JYh5kyBye76uFvi6g/DtCEf4r9+OPQdP1jwxyMlhyfce8PhuLDicyudPSUkRHQz04OrihENHz2Ll2q0oKSkFzTXaSIkwNj6Jtba49Vdf7Njsh07f6Nfpfn9bu1goCValo6WJ3dt+gqICj/1uzMMFe7avYby4MF04vD1dEbBxuVBQ1neZkqqnrQUG9rWT+O+xce1ioSQoyTGlqMDD3sA1cHVxYkxQFc2ZOREjh/ar8Tkb2NcO545vx7BBDtXuQ5QJzsNYkyATS3MT/HNoM1prqNV4Xz8unoWlC2cIJbWq15X9O9eBx+Ni8fxp1W4vI8PByqWzYWttVuPj+XnVAkyf7CwyNjgcDtwmjMDGdT6gSbcb0b5Dp0SuHzzQHpdP/4n9O9fBwd7qq/c3dqQjnIb0EfuO1G3CCMZ1k8YNh8/302v8TzrUsTdmz5jQYGVKdFOHnBwCNi6v1UWgqbDu1hV9e4s3UYSkxNTqH73Rw8ZC7LJq+vv1tLVA4OaVaKWs1Ci/mVYbDfy04n81Ttwe340Va9u2Om2wc4sfPD1cxC5/0f+m1uh4Rg7rB+fRg8TeftTw/hjtNICaRhvLgSP/YviQPrDu1lXkdg72VnCwt8LL6Dhs2X4A5y/fqVWzmbq6CgAgP78A/z0MxYePn2DT3RTaWq0Ztx/tNAA79xyrtKyDgR5W/zgXTD1a/9h+EKfOXkdZWRkszU2wbNFMaLXRqLSd9yxXHD5+HgJBTr2UmZj0DqvXbwcA8Lif7zyr+vSpEOt/D6q0LPJF05qztaDgA7hceQRt9cfEaYvwPCK6YW7Odqytdpteg9yQmFR985mFmbFY+2zqMVWud8/uIi+wkS9e41VMHJSVW8LOyqxGtTEA0FBXReDmlaxjhUtKShH54jXiE5JQXFICvq42zLp0grx8C5Hlvo59i4tX7iIkLBKJye+Qm5eP1uqq6GlniTkzJkJZuWWl7Qf1t0d7vbaIf5ss1nGX17YFWTn472EoZGVl0Muum1C5Fa9n5R6HRCDhbQqMOxmw9qK3suwCrTYaeJeWKXYyBz53KAx7/hJv4hKhoqIEm26mrMf0vfdknD53XWIfR0h0IiwpKYXH7OXYG7gG3Sw6V7u9UUd9BGxcjuAnz/GD769iB2pFzyJeYaqnLzIF2V+agwJ/X8k4xZtRRwPweFx8/Pjpy7L5s90Z/1GXrNiI46cuf/k7ITEF4ZHRuHx6F2RlZSpNdeYyZii27zpSL2WmZwiwe/8/AIBWykqMibCwsOjLNk3Vo6fhWL8pCD4LPLBvxzqMc1+A17FvJTLOL1y5g4Cdh/EqJg5KSoroZmaC5JQ0iYmpcjOnjmP8fh8+fsLc73/CtVsPUPG52JYNy2rUkjNnxkTWmuClq/fg/8t2oRsQVRVlTHUfg0+fCoU+cz84FJu3HcCjp+FC65JT0vAs4hVi4xOxY7OfUJNkb/vuiD8i/vXl4aNn8Ji7HO/fFwAAWmuo4diBTaxjnUtLyzDPZx3OnL9RqSn5h3nTGJswTTt3FDsRAoBAkINZ8/wqfXdl5ZbY9PMSxkcO7fg6sLM2r5MOTtQ0Wgu5ee8xfvJCbN91BEVFxWJ9xqa7Kc4cC4BNd1PUdIzYomUbviTB8trRyjVbwdbTjl/hDQVKSooYNli4aTX4yfNKF5eKd6JMgWVvZ1mvZUqL7buOYM2GHVBXU8HBoPVoq9NG4r7DmfM34DV/NcIjo1FYWASBIAdXbz5AQmKKRMWUhroqevXoxvgd/dYGVEqCAJCdkwfPeasqJXxR5OVbYMK4YYzrTp65hlnz/Bhr4dk5edi0dR9u3X0ktM5tug9jEqzo2o0HjNcd084da3RdWbrq9y9JEPj8hpJNW/exfub8pVuVkmB5vJfHRVU1fVPK7O/9hb57Xl4+5vusgyArh+W62pWaRhtTcXEx1m8KwtETFzDLwwVjRgz8Mi8mm1bKSggK8MdIlzmsnW6EahlPnuNVTJzQ8oTEFLxNTIUeXxtMQw3K9bA2r3TXXO7i1bus+0x4mwxUuYB0NupQr2U2hrUr52HSeKd6K19HSxOHdq2Hs/uCSjcyTTquS0rg/0ugyG0kJaasunVh7HiRniHA8VPM43kLPnzE0RMXsGDuZIjzPJWpc1p+fgH81m5FXbzhRr+dLgz1+dDja4Ovq4N2ejrQ09WGLEOHFXV1VbHLfhwSjjcMrRUPHz9j/cyhv88xJtQHwWFox9cRWqekJH4z89PQSDx4FMa47v37Aly6dg8TnYVvOkyMOwCUCBtfXEIylq7chA2bd8Nt/Ai4TxwBzdbqEDUebrmPF6bN/lGs8l/HsTetpWVkMiZCrvz/J2RjI0PGz67w8cIKHy+xv6eKivKX4QH1Uaa0MtDnY/H8afX6QtfS0rJqz6G4pzgkLApp6QKR20hKTBl3NGDc5n5wmMiu969i4sXal1mXTozLb//3BDm572v9ezr26wEX52HoZWcJHo8r9ueUa5B4Et4y1+IyM9lv2GLjExmXp2dkgbknfQuxjyf4yXOR61++imVcrqbSihJhUyIQ5GBL4EEE7j4KNxcnLJgzmfUhb/8+ttDR0kTKu/Rqy83PZx8kX1xUIta0cKij9y8q8Lgo+PCxXsqUVi+j47D2152o77lGmZrZaiPmTYLUxJQKy0UyMSlVZBmFhUUQryMbcw0sTszWHqbz+sevvrV+ZMCB+D1tqw6Sr9giUNPPFBUXf/Xvlp2TJ3J9XoUm3IoUFHmUCJuiwsIi7D5wEldvPMDBoPWMTQYAYGNlitPnrqMh3umHOhwwXl9lNoZlqzZj2arNdV7uPC83LJg7GQmJKXCf4fNVtYOGlp9fIDUxxTamtrCa5/qycrJi7Yet6a82A73lZGURFOAPS3MT1gSVmpqBxORUJCW/wxDH3mjJMsEBJHK+3NJq3krDY202pUTYhCUkpmDh0l9w7MAmxvWimk/rUg7LndbziGikilEjZbpbrI8ypcVC7ynw9nRFWroAbh4+1TYzNjXiNKFKSkwVsEw5WF3ts42meP+buSw3OHxdrRqf9zGjHBmT4L0HIdi87QBCn7+oVFO1t+smVYmwuv4V7fV0WGqSuZQIG5qOliZsrc1w6uw1sbYPefaCdV1RUVGDHHNaeiZrD7DtQUebTJnVBk2Lph82ttZm8PZ0RU7ue7jP8GHtTSfpJCWmMrOyazVW0s7aXKzy2XqXOvS0EhrCVJ3hgx0Yb6anevkKNdXKyHCgoqIsVTFlxPI8t2LiZ/LiZSxoZpkGv2tpgd/XL8GGnxYJDeZl0kfEeKTUtAw01Ng2JqOc+jP20musMvGlWYm5hqjA436ZXKCp4nE/P5ua4rkML6PjpLa1Q1JiKjwyhrWTC1sy/MawHQYPsBer/HsPQlgnwZg/271Gx2qorye0LCIqhvF5pXV3UyjUYVNyU+DYrwd0tDRZ5501YelM9SQ0ghJhYxn37WDcvrgfa/3mo5+DjVBQaqirYtp3Y7Blw1LWppunoVENcqwRUTFISU1nnIV/ta+3yDdqKCkpYp6XGxz79aj3MlGh+zrbM5aZU8ahqT8fnum9EiFhUZBmkhJTT8MiWTu+BPz2I4w7GQjNlrMrwF/kvlClY1FEFHOy9fRwwSrfuVBlqLnpaGvC94dZlaayY5ppxryrkdBzTlUVZaz29Za6mOJy5bHjDz+hCkZ3iy7Y9DPzvKIpqemsQy5ATaMN98NNGjcck8YNB/C511N2Th6UlRShUc14nus3HyA9Q9BgL20NDDqKVb7CU1e5ujjBwd4KZy7cQOTLN8jNfQ8FBS7aardBd4vO6N/XDooKPHj/sLbey0SFdzbGxifiG8N2jBeXHjbmiI1PAl9XGzt2/40r1/9rMjEhqTNcSGtM5eXl4+zFWxgzciCYBnufOx6IJyEReJuUCm2t1rC1MmWdKo3NL7/vZp3ibvKkUZgwdijCnr9EUkoa5GRlYGigBxOjDpCR4VSqBaemZQglgbY6bfD3/o3Yf/hfpGcI0OkbfUxxHS3yvaiSzKxLJ9y6sA/3g8OQlZ0LQ30+zE2NWDvU7T10SqLfQCGVnWVUVZQZ7/6qysl9D7912xr02A79fQ7Dh/RhnNVGj6+N2TMmNokyy92++5gxEQKAuakxzE0/N2vtlmsW/a6aJEmJqc3bDmCIYy/GHqSysjKwsTKFjZVplef3xWLXCm/dfYQ9B09iqtu3rDfMVctncufeE5h3NRJa3rVzR/zivxBV592VlZMV+RYIScXjcRmnjmRqlQjadwL09gkJlJGZhalevmJP4YQ6nAXHc/4q1macplJmud0H/xH7JcMEjTazkiTEVPzbzxNeiPv+y6Tkd/gj8FCN9uG/fjuOHL/wVce55+DJasfSocL0cB8KpGvs7f3gzy8UgJidlLzmr5b4HucSmwgFWbm4eSe4xjOhFJeU4OiJCxju7IWnoZGNNuB/jOs87D10SuwBwwDwNjEVsXGJDVYmACQmvYP3ojVSPdAeUjKJhCTE1Olz1+G1YBXrfJXlol6+gduMJay9TSGiqXjJyo1YuGyDyJd3g+GNKuUyBdmYPmc566D18uvIut/+xOHj56UulsIjY+A1f3W1Y27/exgKZ/cFUtEjW06SJ9ue4ukLHW1NONhbwcqyCwwN+OC31YaSkiIUeDwUFhYiv+ADklLS8PrNWzx4FIZrNx8gIzOr0Y//06dC+K0NwLY/D2PU8P6wszFHpw76UFNtBQUFHj5++oScnDzEJSQjIioGt+4+wv3gUJHt8PVRJgBcv/UQjiOnY4rraPTu2Q16utpQUFBAYWEhMgXZiHoVi+jX8SAUU+KUeenqPdx/GIZJ44djQF87GOrz0UpZCYKsHMS8ScDpc9dx8sxVFBUVo6etRa3OxYnTl/Hv+esYPrgPHOytYGFqBA0NNSi1VERRURGyc/IQn5CMp2GROHfpNsIjo6vM/xkBx5HTMc39W/TvY4t2em0hw+Eg5V0G7geH4sDhfxH18o3UxtLNO8EYPHoGJruOxoA+ttBtqwUOh4O0dAGehETg7MWbuHE7WGq+L6d954FldAkhhJDmxWv6BPgs8BBa/ufe41izYUezOhcyFA6EEEKaM0qEhBBCKBESQgghlAgJIYQQSoSEEEIIJUJCCCGEEiEhhBBCiZAQQgiRcjSgnhBCCNUICSGEEEqEhBBCCCVCQgghpJklwvjIqxw6DYQQQpqj+MirHKoREkIIoaZRQgghpFknQmoeJYQQgmbYLEo1QkIIIVQjrJoZCSGEkOZSGxSqEVIyJIQQ0pySIGPTKCVDQgghzSUJsj4jpGRICCGkOSRBkZ1lKBkSQgiR9iQIAGIlO3pDBSGEEGlLgDVKhJQUCSGESFPyq+j/AEfdnoJVST+lAAAAAElFTkSuQmCC';
 var RQA_PULL_BUTTON_PNG = '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';
+
+// ================================================================ Screenshot Proof Uploader (sidebar)
+//
+// RDC QA > Screenshot Proof Uploader opens Sidebar.html beside the sheet: paste (Ctrl+V) or drop a screenshot, check
+// the preview, then Upload & Insert saves it to the team's Drive folder (its ID kept in the script properties, so the
+// whole team uploads to one folder), lets anyone with the link view it, and puts a link to it in the selected cell.
+
+var RQA_PROOF_FOLDER_PROP = 'PROOF_FOLDER_ID';
+var RQA_PROOF_MAX_BYTES = 10 * 1024 * 1024;
+var RQA_PROOF_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+
+function rqaOpenProofUploader() {
+  SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('Screenshot Proof Uploader'));
+}
+
+/** What the sidebar shows: the saved folder and the selected cell with its row's test case ID. */
+function rqaProofState() {
+  var id = PropertiesService.getScriptProperties().getProperty(RQA_PROOF_FOLDER_PROP) || '', name = '';
+  if (id) { try { name = DriveApp.getFolderById(id).getName(); } catch (err) { name = ''; } }
+  return { folderId: id, folderName: name, target: rqaProofTarget_() };
+}
+
+/** Saves the team's Drive folder ID after checking the folder opens. */
+function rqaProofSaveFolder(folderId) {
+  var id = rqaProofFolderId_(folderId);
+  var folder;
+  try { folder = DriveApp.getFolderById(id); } catch (err) { throw new Error('That folder could not be opened. Check the ID and that you can add files to it.'); }
+  PropertiesService.getScriptProperties().setProperty(RQA_PROOF_FOLDER_PROP, id);
+  return { folderId: id, folderName: folder.getName() };
+}
+
+/**
+ * Saves one screenshot to the folder as Proof_<Test Case ID or sheet-row>_<timestamp>.<ext>, shares it as view-only
+ * for anyone with the link, and adds a link to it in the selected cell (after any proof links already there).
+ */
+function rqaProofUpload(base64, mimeType, folderId) {
+  var ext = RQA_PROOF_TYPES[String(mimeType || '').toLowerCase()];
+  if (!ext) throw new Error('Only PNG, JPG, GIF or WebP images can be uploaded.');
+  var bytes = Utilities.base64Decode(String(base64 || '').replace(/^data:[^,]*,/, ''));
+  if (!bytes.length) throw new Error('The image is empty.');
+  if (bytes.length > RQA_PROOF_MAX_BYTES) throw new Error('The image is over 10 MB.');
+  var id = rqaProofFolderId_(folderId || PropertiesService.getScriptProperties().getProperty(RQA_PROOF_FOLDER_PROP));
+  var folder;
+  try { folder = DriveApp.getFolderById(id); } catch (err) { throw new Error('The proof folder could not be opened. Check the Folder ID.'); }
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty(RQA_PROOF_FOLDER_PROP)) props.setProperty(RQA_PROOF_FOLDER_PROP, id); // the first upload keeps the folder for the team
+  var t = rqaProofTarget_();
+  if (t.blocked) throw new Error(t.blocked);
+  var stamp = Utilities.formatDate(new Date(), RQA_TZ, 'yyyyMMdd-HHmmss');
+  var tag = String(t.testCaseId || (t.sheet + '-R' + t.row)).replace(/[^A-Za-z0-9._-]+/g, '-');
+  var file = folder.createFile(Utilities.newBlob(bytes, mimeType, 'Proof_' + tag + '_' + stamp + '.' + ext));
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (err) { /* domain policy may forbid it; the link still works for people with access */ }
+  var url = file.getUrl();
+  var cell = SpreadsheetApp.getActiveSheet().getRange(t.a1);
+  var old = cell.getRichTextValue(), label = 'Proof ' + Utilities.formatDate(new Date(), RQA_TZ, 'yyyy-MM-dd HH:mm');
+  var runs = [], text = '';
+  if (old && old.getText()) {
+    old.getRuns().forEach(function (r) { runs.push({ s: text.length + r.getStartIndex(), e: text.length + r.getEndIndex(), u: r.getLinkUrl() }); });
+    text = old.getText() + '\n';
+  }
+  var start = text.length;
+  text += label;
+  var b = SpreadsheetApp.newRichTextValue().setText(text);
+  runs.forEach(function (r) { if (r.u) b.setLinkUrl(r.s, r.e, r.u); });
+  b.setLinkUrl(start, text.length, url);
+  cell.setRichTextValue(b.build());
+  return { url: url, name: file.getName(), cell: t.sheet + '!' + t.a1 };
+}
+
+/** A folder ID from an ID or a pasted Drive folder link. */
+function rqaProofFolderId_(value) {
+  var s = String(value || '').trim(), m = s.match(/folders\/([A-Za-z0-9_-]{10,})/) || s.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
+  var id = m ? m[1] : s;
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) throw new Error('Enter the Google Drive Folder ID (or paste the folder link) first.');
+  return id;
+}
+
+/** The selected cell, its row's test case ID (from a "Test Case ID" / "TC ID" header) and why it can't take a link. */
+function rqaProofTarget_() {
+  var sh = SpreadsheetApp.getActiveSheet(), cell = sh.getActiveCell();
+  var t = { sheet: sh.getName(), a1: cell.getA1Notation(), row: cell.getRow(), column: cell.getColumn(), testCaseId: '', header: '', blocked: '' };
+  var heads = sh.getRange(1, 1, Math.min(3, sh.getMaxRows()), sh.getLastColumn() || 1).getDisplayValues();
+  for (var r = 0; r < heads.length; r++) {
+    var c = heads[r].findIndex(function (h) { return /^(test case id|tc id)$/i.test(String(h).trim()); });
+    if (c >= 0) {
+      if (t.row > r + 1) t.testCaseId = String(sh.getRange(t.row, c + 1).getDisplayValue()).trim();
+      t.header = String(heads[r][t.column - 1] || '');
+      if (t.row <= r + 1) t.blocked = 'Select a cell below the header row.';
+      break;
+    }
+  }
+  if (!t.blocked && cell.getFormula()) t.blocked = 'The selected cell has a formula. Select an empty or proof cell.';
+  if (!t.blocked && cell.getDataValidation()) t.blocked = 'The selected cell has a dropdown (' + (t.header || t.a1) + '). Select its row’s Screenshot Proof cell instead.';
+  return t;
+}

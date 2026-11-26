@@ -10,6 +10,9 @@ How the tabs are used day to day: **[WORKFLOW.md](WORKFLOW.md)**.
 
 1. Open the spreadsheet > **Extensions > Apps Script** (project **RDC QA**). If the code is missing or older
    than this repo, paste `apps-script/RdcCheckerApi.gs` over `Code.gs` and save.
+   Also add an HTML file named **Sidebar** (*+ > HTML*) with `apps-script/Sidebar.html`: it is the
+   *RDC QA > Screenshot Proof Uploader* sidebar (paste or drop a screenshot, it is saved to the team's Drive folder,
+   shared view-only with anyone with the link, and linked in the selected cell).
 2. Pick **rqaSetupSheet** in the function list at the top and click **Run**. Google asks for permission
    once (*Review permissions* > your account > *Allow*). Reload the spreadsheet: seven tabs and an **RDC QA** menu.
    *RDC QA > Set up / repair spreadsheet* can be run any time; it never deletes data.
